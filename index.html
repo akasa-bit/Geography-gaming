@@ -52,11 +52,11 @@
       <!-- 1. 地形・プレート -->
       <div id="panelTerrain" class="pane">
         <h2>地形とプレートをつくる</h2>
-        <p class="lead">自動生成では、マントル対流 → プレートの動き → 大地形の順に決まります。上昇流の上に広がる境界(海嶺)、下降流の上に狭まる境界(海溝・新期造山帯)ができます。ブラシで自分で描くこともできます。</p>
+        <p class="lead">「地球(実データ)」は観測データをそのまま使います。地形を描き変えると自作の惑星になり、気候はシミュレーションで計算します。自動生成では、マントル対流 → プレートの動き → 大地形の順に決まります。上昇流の上に広がる境界(海嶺)、下降流の上に狭まる境界(海溝・新期造山帯)ができます。ブラシで自分で描くこともできます。</p>
         <div class="group">
           <h3>ひな形</h3>
           <div class="row">
-            <button type="button" class="btn" id="preEarth">地球(簡略)</button>
+            <button type="button" class="btn" id="preEarth">地球(実データ)</button>
             <button type="button" class="btn" id="preRandom">マントル対流から自動生成</button>
             <button type="button" class="btn" id="preBlank">海だけの惑星</button>
           </div>
@@ -85,7 +85,20 @@
         <h2>気候を読む</h2>
         <p class="lead">地図をタップすると、その地点の雨温図とハイサーグラフ、気候区分の判定手順が出ます。地図の種類を切り替えて、気候因子との関係を確かめましょう。</p>
         <div id="inspect"></div>
-        <details class="model">
+        <details class="model" id="realNote" hidden>
+          <summary>このデータの出典(実在の地球)</summary>
+          <ul>
+            <li><b>標高・水深</b>: NOAA NCEI ETOPO 2022(氷床表面)</li>
+            <li><b>陸上の気温・降水量</b>: デラウェア大学 Air Temperature &amp; Precipitation v5.01(NOAA PSL 提供、1981〜2010年平均)</li>
+            <li><b>海面水温</b>: NOAA OI SST V2(1991〜2020年平均)</li>
+            <li><b>海上の降水量</b>: GPCP v2.3(1991〜2020年平均)</li>
+            <li><b>風</b>: NCEP/NCAR 再解析 地表付近(1991〜2020年平均)</li>
+            <li><b>海流</b>: NOAA GODAS 深さ5m(1991〜2020年平均)。暖流・寒流は、同緯度の海の平均水温との差(±1.2℃)と流れの向き(高緯度向き/低緯度向き)で色分け</li>
+            <li><b>プレート</b>: Bird (2003) PB2002。高校地理の主要プレートにまとめて表示</li>
+          </ul>
+          <p class="hint">値は2°×2°の平均なので、都市の観測値とは少しずれます(山がちな所は標高が平均され、気温が低めに出ます)。南極・グリーンランド内陸の気温はNCEP/NCAR再解析、降水はGPCPで補っています。ケッペン・植生の地図はこの気温・降水量から判定したもので、大地形の区分は教科書の造山帯の位置を手で指定しています。</p>
+        </details>
+        <details class="model" id="modelNote">
           <summary>このシミュレーションの考え方</summary>
           <ul>
             <li><b>緯度</b>: 太陽高度で年平均気温が決まる。</li>
@@ -114,9 +127,10 @@
       </div>
     </aside>
   </main>
-  <footer class="foot">高校地理の気候因子にもとづく簡略モデル。ケッペンの区分は教科書の判定法(乾燥限界 r=20(t+x))を使用。</footer>
+  <footer class="foot">地球(実データ)は NOAA・デラウェア大学・GPCP・Bird (2003) のデータを2°格子に集計。自作・自動生成の惑星は高校地理の気候因子にもとづく簡略モデル。ケッペンの区分は教科書の判定法(乾燥限界 r=20(t+x))。</footer>
 </div>
 
+<script src="data/earth.js"></script>
 <script src="js/core.js"></script>
 <script src="js/climate.js"></script>
 <script src="js/knowledge.js"></script>

@@ -289,6 +289,29 @@
     return 'desert';
   }
 
-  const API = { simulate, koppen, vegetation, HIGHLAND_M };
+  /* ---- 実在の地球: シミュレーション結果を観測・解析データで置き換える ---- */
+  function applyObserved(sim, world, D) {
+    const b = Core.b64bytes, T = new Int16Array(b(D.T).buffer), P = new Uint16Array(b(D.P).buffer);
+    const wu = new Int8Array(b(D.wu).buffer), wv = new Int8Array(b(D.wv).buffer), cu = new Int8Array(b(D.cu).buffer), cv = new Int8Array(b(D.cv).buffer), sa = new Int8Array(b(D.sstA).buffer);
+    for (let m = 0; m < 12; m++) for (let i = 0; i < N; i++) {
+      sim.T[m][i] = T[m * N + i] / 10; sim.P[m][i] = P[m * N + i];
+      sim.wu[m][i] = wu[m * N + i] / 60; sim.wv[m][i] = wv[m * N + i] / 60; // 6 m/s を矢印の基準長に
+    }
+    for (let i = 0; i < N; i++) {
+      const lat = latOf((i / W) | 0), t = [], p = [];
+      for (let m = 0; m < 12; m++) { t.push(sim.T[m][i]); p.push(sim.P[m][i]); }
+      const k = koppen(t, p, lat, world.elev[i]);
+      sim.tAnn[i] = k.tAvg; sim.pAnn[i] = k.R;
+      sim.kop[i] = sim.land[i] ? k.code : null; sim.veg[i] = sim.land[i] ? vegetation(k) : null;
+      sim.cu[i] = cu[i] / 200 / 0.12; sim.cv[i] = cv[i] / 200 / 0.12; sim.sstA[i] = sa[i] / 10;
+      // 暖流=同緯度の海より暖かく高緯度へ向かう流れ、寒流=冷たく低緯度へ向かう流れ
+      const pole = sim.cv[i] * (lat >= 0 ? 1 : -1), mg = Math.hypot(sim.cu[i], sim.cv[i]);
+      sim.ckind[i] = sim.land[i] || Math.abs(lat) > 72 || mg < 0.2 ? 0 : (sa[i] > 12 && pole > 0.15 * mg) ? 1 : (sa[i] < -12 && pole < -0.15 * mg) ? -1 : 0;
+    }
+    sim.observed = true;
+    return sim;
+  }
+
+  const API = { simulate, koppen, vegetation, applyObserved, HIGHLAND_M };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.Climate = API;
 })(typeof window !== 'undefined' ? window : globalThis);

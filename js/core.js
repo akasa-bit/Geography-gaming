@@ -45,7 +45,7 @@
     return sum / tot;
   }
 
-  const PLATE_COLORS = ['#e4572e', '#3b8ea5', '#f0b429', '#7a9e3a', '#9b5de5', '#d6588f', '#4f6d7a', '#c2703d', '#2a9d8f', '#8d99ae'];
+  const PLATE_COLORS = ['#e4572e', '#3b8ea5', '#f0b429', '#7a9e3a', '#9b5de5', '#d6588f', '#4f6d7a', '#c2703d', '#2a9d8f', '#8d99ae', '#b5403a', '#5f7fd0', '#a8a23a', '#6b4c9a', '#3f8f6b', '#d98e4a'];
 
   function newWorld() {
     const w = { W, H, elev: new Float32Array(N), plate: new Uint8Array(N), oro: new Uint8Array(N), mantle: null, plates: [], name: '' }; // oro: 1=新期造山帯 2=古期造山帯
@@ -73,8 +73,9 @@
   // 戻り値: type[i] 0=なし 1=狭まる 2=広がる 3=ずれる, other[i]=相手プレート, rate[i]=収束/発散の強さ
   function boundaries(w) {
     const type = new Uint8Array(N), other = new Int16Array(N).fill(-1), rate = new Float32Array(N);
-    const vx = w.plates.map(p => p.speed * Math.sin(p.dir * Math.PI / 180));
-    const vy = w.plates.map(p => p.speed * Math.cos(p.dir * Math.PI / 180)); // 北向き正
+    const pvx = w.plates.map(p => p.speed * Math.sin(p.dir * Math.PI / 180));
+    const pvy = w.plates.map(p => p.speed * Math.cos(p.dir * Math.PI / 180)); // 北向き正
+    const cell = !!w.pvx; // 実データ: セルごとの速度(オイラー極まわりの回転)
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x, a = w.plate[i];
       let bj = -1;
@@ -87,7 +88,12 @@
       let nx = 0, ny = 0;
       for (let dy = -2; dy <= 2; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; for (let dx = -2; dx <= 2; dx++) if (w.plate[idx(x + dx, yy)] === bj) { nx += dx; ny -= dy; } }
       const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
-      const rx = vx[a] - vx[bj], ry = vy[a] - vy[bj];
+      let rx, ry;
+      if (cell) { // 相手プレート側の最寄りセルの速度との差
+        let j = -1, bd = 99;
+        for (let dy = -2; dy <= 2; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; for (let dx = -2; dx <= 2; dx++) { const q = idx(x + dx, yy), d = Math.abs(dx) + Math.abs(dy); if (w.plate[q] === bj && d < bd) { bd = d; j = q; } } }
+        rx = w.pvx[i] - w.pvx[j]; ry = w.pvy[i] - w.pvy[j];
+      } else { rx = pvx[a] - pvx[bj]; ry = pvy[a] - pvy[bj]; }
       const closing = rx * nx + ry * ny, shear = Math.abs(rx * ny - ry * nx);
       const t = Math.abs(closing) < Math.max(0.8, 0.45 * shear) ? 3 : closing > 0 ? 1 : 2;
       type[i] = t; other[i] = bj; rate[i] = Math.abs(closing);
@@ -380,6 +386,29 @@
     return w;
   }
 
-  const API = { W, H, N, latOf, lonOf, idx, clamp, rng, fbm, newWorld, mkPlate, distField, boundaries, orogeny, smooth, randomWorld, earthWorld, mantleField, mantleFlow, mantleFromPlates, platesFromMantle, autoPlates, PLATE_COLORS };
+  /* ---- 地球(実データ) ---- */
+  function b64bytes(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+  function realEarthWorld(D) {
+    const w = newWorld(); w.name = '地球(実データ)'; w.real = true;
+    const e = new Int16Array(b64bytes(D.elev).buffer); for (let i = 0; i < N; i++) w.elev[i] = e[i];
+    w.plate.set(b64bytes(D.plate));
+    w.plates = D.plates.map((p, i) => mkPlate(i, p.name, p.dir, p.speed));
+    const vx = new Int8Array(b64bytes(D.pvx).buffer), vy = new Int8Array(b64bytes(D.pvy).buffer);
+    w.pvx = new Float32Array(N); w.pvy = new Float32Array(N);
+    for (let i = 0; i < N; i++) { w.pvx[i] = vx[i] / 10; w.pvy[i] = vy[i] / 10; }
+    // 大地形の区分は教科書的な造山帯の位置を手で指定したもの(データセットではない)
+    const dc = distField(boundaries(w).type.map(t => t === 1 ? 1 : 0));
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x; if (w.elev[i] <= 0) continue;
+      const lo = lonOf(x), la = latOf(y); let best = 9, mk = -1;
+      EARTH_MTS.forEach(([path, h, wd], mi) => { for (let k = 0; k < path.length - 1; k++) { const d = segDist(lo, la, path[k][0], path[k][1], path[k + 1][0], path[k + 1][1]) / 2 / (wd * 0.62 + 0.6); if (d < best) { best = d; mk = mi; } } });
+      if (best < 1.1 && EARTH_NEW.includes(mk) && w.elev[i] > 400) w.oro[i] = 1;
+      else if (best < 1.1 && EARTH_OLD.includes(mk) && w.elev[i] > 250) w.oro[i] = 2;
+      else if (dc[i] <= 1 && w.elev[i] > 300 && Math.abs(la) < 62) w.oro[i] = 1;
+    }
+    return w;
+  }
+
+  const API = { realEarthWorld, b64bytes, W, H, N, latOf, lonOf, idx, clamp, rng, fbm, newWorld, mkPlate, distField, boundaries, orogeny, smooth, randomWorld, earthWorld, mantleField, mantleFlow, mantleFromPlates, platesFromMantle, autoPlates, PLATE_COLORS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.Core = API;
 })(typeof window !== 'undefined' ? window : globalThis);

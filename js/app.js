@@ -236,7 +236,14 @@
     if (mode === 'quiz') { if (!S.quiz) newQuestion(); else renderQuiz(); if (!layerAllowed(S.layer)) S.layer = 'terrain'; }
     buildLayerChips(); refresh();
   }
-  function runSim() { S.sim = Climate.simulate(S.world); S.quiz = null; S.inspect = -1; }
+  const realEarth = () => Core.realEarthWorld(window.EARTH_DATA);
+  function runSim() {
+    S.sim = Climate.simulate(S.world);
+    if (S.world.real) Climate.applyObserved(S.sim, S.world, window.EARTH_DATA); // 実在の地球は観測データを使う
+    S.quiz = null; S.inspect = -1;
+    $('realNote').hidden = !S.world.real; $('modelNote').hidden = !!S.world.real;
+  }
+  const unreal = () => { S.world.real = false; S.world.pvx = S.world.pvy = null; if (S.world.name === '地球(実データ)') S.world.name = '自作の惑星'; };
   function worldChanged(keepSim) {
     bounds = null; mantleCache = null; if (!keepSim) { S.sim = null; S.quiz = null; S.inspect = -1; }
     $('worldName').textContent = S.world.name || '自作の惑星';
@@ -253,13 +260,15 @@
   function saveWorld() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      const w = S.world, e = new Int16Array(N); for (let i = 0; i < N; i++) e[i] = Math.round(w.elev[i]);
+      const w = S.world; if (w.real) { store.set('geo-world', { real: true }); return; }
+      const e = new Int16Array(N); for (let i = 0; i < N; i++) e[i] = Math.round(w.elev[i]);
       const b64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); };
       store.set('geo-world', { name: w.name, plates: w.plates, e: b64(new Uint8Array(e.buffer)), p: b64(w.plate), o: b64(w.oro) });
     }, 600);
   }
   function loadWorld() {
-    const d = store.get('geo-world'); if (!d || !d.e) return null;
+    const d = store.get('geo-world'); if (d && d.real) return realEarth();
+    if (!d || !d.e) return null;
     try {
       const u8 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)), w = Core.newWorld();
       const e = new Int16Array(u8(d.e).buffer), p = u8(d.p); if (e.length !== N || p.length !== N) return null;
@@ -289,17 +298,17 @@
       const name = el('span', { class: 'pname' }, p.name);
       const dir = el('select', { id: 'pdir' + i, 'aria-label': p.name + 'の向き' });
       for (const [d, t] of DIRS) { const o = el('option', { value: d }, t); if (d === p.dir) o.selected = true; dir.appendChild(o); }
-      dir.onchange = () => { p.dir = +dir.value; S.world.mantle = null; worldChanged(true); S.layer = 'plates'; buildLayerChips(); refresh(); };
+      dir.onchange = () => { p.dir = +dir.value; S.world.mantle = null; S.world.pvx = S.world.pvy = null; worldChanged(true); S.layer = 'plates'; buildLayerChips(); refresh(); };
       const sp = el('select', { id: 'pspd' + i, 'aria-label': p.name + 'の速さ' });
       for (const v of [0, 1, 2, 3, 5, 7, 9]) { const o = el('option', { value: v }, v ? v + ' cm/年' : '動かない'); if (v === p.speed) o.selected = true; sp.appendChild(o); }
       if (![0, 1, 2, 3, 5, 7, 9].includes(p.speed)) { const o = el('option', { value: p.speed }, p.speed + ' cm/年'); o.selected = true; sp.appendChild(o); }
-      sp.onchange = () => { p.speed = +sp.value; S.world.mantle = null; worldChanged(true); S.layer = 'plates'; buildLayerChips(); refresh(); };
+      sp.onchange = () => { p.speed = +sp.value; S.world.mantle = null; S.world.pvx = S.world.pvy = null; worldChanged(true); S.layer = 'plates'; buildLayerChips(); refresh(); };
       row.append(pick, name, dir, sp); box.appendChild(row);
     });
     $('addPlate').disabled = S.world.plates.length >= 10;
   }
   function pushUndo() {
-    S.undo.push({ e: Float32Array.from(S.world.elev), p: Uint8Array.from(S.world.plate), o: Uint8Array.from(S.world.oro), ps: JSON.stringify(S.world.plates), m: S.world.mantle });
+    S.undo.push({ e: Float32Array.from(S.world.elev), p: Uint8Array.from(S.world.plate), o: Uint8Array.from(S.world.oro), ps: JSON.stringify(S.world.plates), m: S.world.mantle, real: S.world.real, name: S.world.name, pvx: S.world.pvx, pvy: S.world.pvy });
     if (S.undo.length > 12) S.undo.shift();
   }
   function paint(gx, gy) {
@@ -329,7 +338,7 @@
   cv.addEventListener('pointerdown', ev => {
     const [gx, gy] = cellAt(ev);
     if (S.mode === 'terrain') {
-      painting = true; cv.setPointerCapture(ev.pointerId); pushUndo(); S.world.name = '自作の惑星'; lastCell = [gx, gy]; paint(gx, gy); schedule(); ev.preventDefault();
+      painting = true; cv.setPointerCapture(ev.pointerId); pushUndo(); if (S.tool === 'plate') S.world.pvx = S.world.pvy = null; else { unreal(); S.world.name = '自作の惑星'; } lastCell = [gx, gy]; paint(gx, gy); schedule(); ev.preventDefault();
     } else if (S.mode === 'climate') {
       let i = gy * W + gx;
       if (!S.sim.land[i]) { let bd = 9, b = -1; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const yy = gy + dy; if (yy < 0 || yy >= H) continue; const j = idx(gx + dx, yy), d = Math.hypot(dx, dy); if (S.sim.land[j] && d < bd) { bd = d; b = j; } } if (b >= 0) i = b; }
@@ -444,10 +453,11 @@
       <div class="verdict"><span class="code">${k.code}</span><span class="kname">${K.name}</span><span class="hint">植生: ${G.VEG[pd.veg].name}(${G.VEG[pd.veg].sub})</span></div>
       ${chartsHTML(true, pd)}${factsHTML(pd, true)}
       <h3>判定の手順</h3>${koppenSteps(pd)}
-      <h3>なぜこの気候になるか</h3>${factorNotes(pd)}<p class="note">${K.note}</p>
+      <h3>なぜこの気候になるか</h3>${factorNotes(pd)}<p class="note">${K.note}</p>${realHint()}
       <h3>くらしと産業</h3>${answerNotes(k.code)}</div>`;
     drawCharts(pd);
   }
+  const realHint = () => S.world.real ? '<p class="hint">気温・降水量は観測データ(2°四方の平均)。上の因子の説明だけは簡略モデルによる推定です。</p>' : '';
 
   /* ---------- 3. クイズ ---------- */
   const PTS = { kop: 40, veg: 20, soil: 10, agri: 15, crops: 15 };
@@ -487,7 +497,7 @@
     if (q.done) return renderResult();
     const pd = q.pd, showLoc = $('showLoc').checked;
     body.innerHTML = '';
-    const head = el('div', { class: 'block' }, `<p class="lead">赤い印の地点${showLoc ? '' : '(地図には非表示)'}の気候です。グラフを読み取り、気候区分・植生・土壌・農業を答えましょう。</p>${chartsHTML(true, pd)}${factsHTML(pd, showLoc)}`);
+    const head = el('div', { class: 'block' }, `<p class="lead">${S.world.real ? '実在の地球の、ある地点(2°四方の平均)の観測値です。' : ''}赤い印の地点${showLoc ? '' : '(地図には非表示)'}の気候です。グラフを読み取り、気候区分・植生・土壌・農業を答えましょう。</p>${chartsHTML(true, pd)}${factsHTML(pd, showLoc)}`);
     body.appendChild(head);
     const mk = (title, pts, node, hint) => { const d = el('div', { class: 'q' }, `<h3>${title}<span>${pts}点</span></h3>${hint ? `<p class="hint">${hint}</p>` : ''}`); d.appendChild(node); body.appendChild(d); };
     const toggle = (c, k) => { const j = c.indexOf(k); if (j >= 0) c.splice(j, 1); else { if (c.length >= 3) c.shift(); c.push(k); } };
@@ -557,7 +567,7 @@
       ${line('作物・家畜', 'crops', names(a.crops, G.CROPS), names(M.crops[0], G.CROPS))}
       ${chartsHTML(false, pd)}${factsHTML(pd, true)}
       <h3>判定の手順</h3>${koppenSteps(pd)}
-      <h3>なぜこの気候になるか</h3>${factorNotes(pd)}<p class="note">${K.note}</p>
+      <h3>なぜこの気候になるか</h3>${factorNotes(pd)}<p class="note">${K.note}</p>${realHint()}
       <h3>くらしと産業</h3>${answerNotes(code)}
       <div class="row"><button type="button" class="btn primary" id="nextQuiz">次の問題</button></div>
       <h3>気候区分ごとの正答数</h3><div class="stats">${stats}</div></div>`;
@@ -568,21 +578,21 @@
 
   /* ---------- 操作の結線 ---------- */
   function setWorld(w) { S.world = w; S.undo = []; S.activePlate = 0; worldChanged(false); buildPlates(); S.layer = 'terrain'; buildLayerChips(); refresh(); }
-  $('preEarth').onclick = () => setWorld(Core.earthWorld());
+  $('preEarth').onclick = () => setWorld(realEarth());
   $('preRandom').onclick = () => setWorld(Core.randomWorld(1 + Math.floor(Math.random() * 9999)));
   $('preBlank').onclick = () => { const w = Core.newWorld(); w.name = '海だけの惑星'; setWorld(w); };
   $('brushSize').oninput = e => { S.brush = +e.target.value; $('brushSizeOut').textContent = S.brush; };
-  $('undoBtn').onclick = () => { const u = S.undo.pop(); if (!u) return; S.world.elev.set(u.e); S.world.plate.set(u.p); S.world.oro.set(u.o); S.world.plates = JSON.parse(u.ps); S.world.mantle = u.m; S.activePlate = 0; buildPlates(); worldChanged(false); buildLayerChips(); refresh(); };
+  $('undoBtn').onclick = () => { const u = S.undo.pop(); if (!u) return; S.world.elev.set(u.e); S.world.plate.set(u.p); S.world.oro.set(u.o); S.world.plates = JSON.parse(u.ps); S.world.mantle = u.m; S.world.real = u.real; S.world.name = u.name; S.world.pvx = u.pvx; S.world.pvy = u.pvy; S.activePlate = 0; buildPlates(); worldChanged(false); buildLayerChips(); refresh(); };
   $('addPlate').onclick = () => {
     const ps = S.world.plates; if (ps.length >= 10) return;
     ps.push(Core.mkPlate(ps.length, 'プレート' + 'ABCDEFGHIJ'[ps.length], 90, 3)); S.activePlate = ps.length - 1; S.tool = 'plate'; S.layer = 'plates';
     worldChanged(true); buildPlates(); buildToolChips(); buildLayerChips(); refresh();
   };
   $('autoPlates').onclick = () => {
-    pushUndo(); Core.autoPlates(S.world, 1 + Math.floor(Math.random() * 99999)); S.activePlate = 0; S.layer = 'mantle';
+    pushUndo(); unreal(); Core.autoPlates(S.world, 1 + Math.floor(Math.random() * 99999)); S.activePlate = 0; S.layer = 'mantle';
     worldChanged(false); buildPlates(); buildLayerChips(); refresh();
   };
-  $('orogenyBtn').onclick = () => { pushUndo(); Core.orogeny(S.world, 1 + Math.floor(Math.random() * 999)); S.world.name = S.world.name || '自作の惑星'; worldChanged(false); buildLayerChips(); refresh(); };
+  $('orogenyBtn').onclick = () => { pushUndo(); unreal(); Core.orogeny(S.world, 1 + Math.floor(Math.random() * 999)); S.world.name = S.world.name || '自作の惑星'; worldChanged(false); buildLayerChips(); refresh(); };
   $('runClimate').onclick = () => { runSim(); setMode('climate'); window.scrollTo(0, 0); };
   $('toQuiz').onclick = () => { setMode('quiz'); window.scrollTo(0, 0); };
   for (const b of document.querySelectorAll('.step')) b.onclick = () => setMode(b.dataset.mode);
@@ -599,7 +609,7 @@
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { draw(); redrawCharts(); });
 
   /* ---------- 起動 ---------- */
-  S.world = loadWorld() || Core.earthWorld();
+  S.world = loadWorld() || realEarth();
   $('worldName').textContent = S.world.name || '自作の惑星';
   buildToolChips(); buildPlates(); buildLayerChips();
   setMode('terrain');
