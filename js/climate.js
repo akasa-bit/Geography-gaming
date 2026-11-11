@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const Core = (typeof module !== 'undefined' && module.exports) ? require('./core.js') : root.Core;
-  const { W, H, N, latOf, idx, clamp } = Core;
+  const { W, H, N, K, latOf, idx, clamp } = Core;
   const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
   // 海面更正した年平均気温(緯度10°ごと)
@@ -12,7 +12,8 @@
   function tBase(a) { const k = Math.min(a / 10, 8.999), i = Math.floor(k); return TB[i] + (TB[i + 1] - TB[i]) * (k - i); }
 
   const itczF = a => { const d = Math.max(0, a - 4) / 8; return Math.exp(-d * d); }; // 熱帯収束帯の雨域
-  function blur(src, r, passes) {
+  function blur(src, r, passes) { // r は2°セル単位
+    r = Math.round(r * K);
     let a = Float32Array.from(src), b = new Float32Array(N);
     for (let p = 0; p < passes; p++) {
       for (let y = 0; y < H; y++) { // 東西
@@ -38,8 +39,8 @@
     /* ---- 海流 ---- */
     const cu = new Float32Array(N), cv = new Float32Array(N), sstA0 = new Float32Array(N), ckind = new Int8Array(N), warmW = new Float32Array(N);
     const openPole = (x, y, sg) => { // 高緯度側に海が続いているか(環流が成立するか)
-      const yy = y - sg * 8; if (yy < 0 || yy >= H) return false;
-      for (let k = -4; k <= 4; k++) if (!land[idx(x + k, yy)]) return true;
+      const yy = y - sg * 8 * K; if (yy < 0 || yy >= H) return false;
+      for (let k = -4 * K; k <= 4 * K; k++) if (!land[idx(x + k, yy)]) return true;
       return false;
     };
     for (let y = 0; y < H; y++) {
@@ -47,8 +48,9 @@
       for (let x = 0; x < W; x++) {
         const i = y * W + x; if (land[i]) continue;
         let dW = 0, dE = 0;
-        while (dW < 70 && !land[idx(x - dW - 1, y)]) dW++;
-        while (dE < 70 && !land[idx(x + dE + 1, y)]) dE++;
+        while (dW < 70 * K && !land[idx(x - dW - 1, y)]) dW++;
+        while (dE < 70 * K && !land[idx(x + dE + 1, y)]) dE++;
+        dW /= K; dE /= K; // 2°セル単位
         const wide = dW + dE >= 7;
         // 東西方向の流れ: 貿易風帯で西向き(赤道海流)、偏西風帯で東向き
         let u = 0, v = 0, an = 0;
@@ -88,8 +90,8 @@
     const gx = new Float32Array(N), gy = new Float32Array(N);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x;
-      gx[i] = (landL[idx(x + 1, y)] - landL[idx(x - 1, y)]) / 2;
-      gy[i] = (landL[idx(x, Math.max(0, y - 1))] - landL[idx(x, Math.min(H - 1, y + 1))]) / 2; // 北向き正
+      gx[i] = (landL[idx(x + K, y)] - landL[idx(x - K, y)]) / 2;
+      gy[i] = (landL[idx(x, Math.max(0, y - K))] - landL[idx(x, Math.min(H - 1, y + K))]) / 2; // 北向き正
     }
     const seasOf = m => Math.cos(2 * Math.PI * (m - 6.2) / 12); // 北半球の夏で +1
 
@@ -124,19 +126,20 @@
         const i = y * W + x;
         if (!land[i]) { Mm[i] = 1; sA[i] = sstA[i]; sB[i] = sstB[i]; continue; }
         let fx = x, fy = y, steps = 0, maxE = 0, found = false, first = -1, srcF = 1, up8 = -1;
-        for (let k = 0; k < 44; k++) {
+        for (let k = 0; k < 44 * K; k++) {
           const c = idx(Math.round(fx), clamp(Math.round(fy), 0, H - 1));
           let ux = u[c], vy = v[c]; const mg = Math.hypot(ux, vy);
           if (mg < 1e-3) { ux = -1; vy = 0; } else { ux /= mg; vy /= mg; }
           fx -= ux; fy += vy;
           if (fy < 0 || fy > H - 1) break;
           const c2 = idx(Math.round(fx), Math.round(fy));
-          if (first < 0) first = c2;
-          if (k === 7) { up8 = landL[c2]; uA[i] = sstB[c2]; }
+          if (k === K - 1) first = c2;
+          if (k === 8 * K - 1) { up8 = landL[c2]; uA[i] = sstB[c2]; }
           if (!found && !land[c2]) { found = true; sA[i] = sstA[c2]; sB[i] = sstB[c2]; srcF = clamp(1.7 * (1 - landS[c2]), 0.2, 1); }
-          if (found) { if (k >= 7) break; continue; }
+          if (found) { if (k >= 8 * K - 1) break; continue; }
           steps++; if (elev[c2] > maxE) maxE = elev[c2];
         }
+        steps /= K; // 2°セル単位
         const a = Math.abs(ph[i]), itcz = itczF(a);
         const Lm = 17 + 9 * itcz; // 熱帯収束帯では蒸発散による水の再循環で内陸まで湿る
         const md = found ? Math.exp(-steps / Lm) * srcF : 0.04;
@@ -290,9 +293,8 @@
   }
 
   /* ---- 実在の地球: シミュレーション結果を観測・解析データで置き換える ---- */
-  function applyObserved(sim, world, D) {
-    const b = Core.b64bytes, T = new Int16Array(b(D.T).buffer), P = new Uint16Array(b(D.P).buffer);
-    const wu = new Int8Array(b(D.wu).buffer), wv = new Int8Array(b(D.wv).buffer), cu = new Int8Array(b(D.cu).buffer), cv = new Int8Array(b(D.cv).buffer), sa = new Int8Array(b(D.sstA).buffer);
+  function applyObserved(sim, world, E) {
+    const T = E.T, P = E.P, wu = E.wu, wv = E.wv, cu = E.cu, cv = E.cv, sa = E.sstA;
     for (let m = 0; m < 12; m++) for (let i = 0; i < N; i++) {
       sim.T[m][i] = T[m * N + i] / 10; sim.P[m][i] = P[m * N + i];
       sim.wu[m][i] = wu[m * N + i] / 60; sim.wv[m][i] = wv[m * N + i] / 60; // 6 m/s を矢印の基準長に

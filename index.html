@@ -64,7 +64,7 @@
         <div class="group">
           <h3>ブラシ</h3>
           <div class="chips" id="toolChips" role="group" aria-label="ブラシの種類"></div>
-          <label class="slider">太さ <input type="range" id="brushSize" min="1" max="9" value="3"><output id="brushSizeOut">3</output></label>
+          <label class="slider">太さ <input type="range" id="brushSize" min="1" max="16" value="4"><output id="brushSizeOut">4</output></label>
           <div class="row"><button type="button" class="btn ghost" id="undoBtn">ひとつ戻す</button></div>
         </div>
         <div class="group">
@@ -96,7 +96,7 @@
             <li><b>海流</b>: NOAA GODAS 深さ5m(1991〜2020年平均)。暖流・寒流は、同緯度の海の平均水温との差(±1.2℃)と流れの向き(高緯度向き/低緯度向き)で色分け</li>
             <li><b>プレート</b>: Bird (2003) PB2002。高校地理の主要プレートにまとめて表示</li>
           </ul>
-          <p class="hint">値は2°×2°の平均なので、都市の観測値とは少しずれます(山がちな所は標高が平均され、気温が低めに出ます)。南極・グリーンランド内陸の気温はNCEP/NCAR再解析、降水はGPCPで補っています。ケッペン・植生の地図はこの気温・降水量から判定したもので、大地形の区分は教科書の造山帯の位置を手で指定しています。</p>
+          <p class="hint">値は1°×1°(約100km四方)の平均なので、都市の観測値とは少しずれます(山がちな所は標高が平均され、気温が低めに出ます)。南極・グリーンランド内陸の気温はNCEP/NCAR再解析、降水はGPCPで補っています。ケッペン・植生の地図はこの気温・降水量から判定したもので、大地形の区分は教科書の造山帯の位置を手で指定しています。</p>
         </details>
         <details class="model" id="modelNote">
           <summary>このシミュレーションの考え方</summary>
@@ -127,7 +127,7 @@
       </div>
     </aside>
   </main>
-  <footer class="foot">地球(実データ)は NOAA・デラウェア大学・GPCP・Bird (2003) のデータを2°格子に集計。自作・自動生成の惑星は高校地理の気候因子にもとづく簡略モデル。ケッペンの区分は教科書の判定法(乾燥限界 r=20(t+x))。</footer>
+  <footer class="foot">地球(実データ)は NOAA・デラウェア大学・GPCP・Bird (2003) のデータを1°格子に集計。自作・自動生成の惑星は高校地理の気候因子にもとづく簡略モデル。ケッペンの区分は教科書の判定法(乾燥限界 r=20(t+x))。</footer>
 </div>
 
 <script src="data/earth.js"></script>

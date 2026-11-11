@@ -1,10 +1,11 @@
 /* 地形・プレートのデータモデルと生成処理
- * グリッド: 経度2°×緯度2°(180×90)。x は経度方向で東西がつながる。 */
+ * グリッド: 経度1°×緯度1°(360×180)。x は経度方向で東西がつながる。
+ * 距離や半径の定数は「2°セル」を単位に書いてあり、K(=2°あたりのセル数)で実際のセル数に直す。 */
 (function (root) {
   'use strict';
-  const W = 180, H = 90, N = W * H;
-  const latOf = y => 89 - 2 * y;
-  const lonOf = x => -179 + 2 * x;
+  const K = 2, DEG = 2 / K, W = 180 * K, H = 90 * K, N = W * H;
+  const latOf = y => 90 - DEG / 2 - DEG * y;
+  const lonOf = x => -180 + DEG / 2 + DEG * x;
   const idx = (x, y) => y * W + ((x % W) + W) % W;
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
@@ -37,7 +38,7 @@
   function fbm(x, y, freq, oct, seed) {
     const ang = (x / W) * Math.PI * 2, R = W / (2 * Math.PI);
     let px = Math.cos(ang) * R, pz = Math.sin(ang) * R, py = y;
-    let amp = 1, sum = 0, tot = 0, f = freq;
+    let amp = 1, sum = 0, tot = 0, f = freq / K;
     for (let o = 0; o < oct; o++) {
       sum += amp * vnoise(px * f + 31.7, py * f + 17.3, pz * f + 5.1, seed + o * 101);
       tot += amp; amp *= 0.5; f *= 2;
@@ -58,13 +59,13 @@
   }
 
   /* ---- 距離変換(海岸からの距離など) ---- */
-  function distField(mask) { // mask[i] 真のセルからの距離(セル数, 4近傍BFS)
-    const d = new Int16Array(N).fill(9999); const q = new Int32Array(N); let qh = 0, qt = 0;
+  function distField(mask) { // mask[i] 真のセルからの距離(2°セル単位, 4近傍BFS)
+    const d = new Float32Array(N).fill(9999); const q = new Int32Array(N); let qh = 0, qt = 0;
     for (let i = 0; i < N; i++) if (mask[i]) { d[i] = 0; q[qt++] = i; }
     while (qh < qt) {
-      const i = q[qh++], x = i % W, y = (i / W) | 0, nd = d[i] + 1;
+      const i = q[qh++], x = i % W, y = (i / W) | 0, nd = d[i] + 1 / K;
       const nb = [idx(x + 1, y), idx(x - 1, y), y > 0 ? i - W : -1, y < H - 1 ? i + W : -1];
-      for (const j of nb) if (j >= 0 && d[j] > nd) { d[j] = nd; q[qt++] = j; }
+      for (const j of nb) if (j >= 0 && d[j] > nd + 1e-6) { d[j] = nd; q[qt++] = j; }
     }
     return d;
   }
@@ -84,9 +85,9 @@
         const b = w.plate[idx(x + dx, yy)]; if (b !== a) { bj = b; break; }
       }
       if (bj < 0) continue;
-      // 境界の向き: 周囲5×5セルにある相手プレートの重心方向を法線とする(階段状の境界をならす)
+      // 境界の向き: 周囲(±4°)にある相手プレートの重心方向を法線とする(階段状の境界をならす)
       let nx = 0, ny = 0;
-      for (let dy = -2; dy <= 2; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; for (let dx = -2; dx <= 2; dx++) if (w.plate[idx(x + dx, yy)] === bj) { nx += dx; ny -= dy; } }
+      for (let dy = -2 * K; dy <= 2 * K; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; for (let dx = -2 * K; dx <= 2 * K; dx++) if (w.plate[idx(x + dx, yy)] === bj) { nx += dx; ny -= dy; } }
       const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
       let rx, ry;
       if (cell) { // 相手プレート側の最寄りセルの速度との差
@@ -107,10 +108,10 @@
     const up = new Float32Array(N), down = new Float32Array(N);
     // プレートごとの境界付近の平均標高(どちらが沈み込むかの判定用)
     const stamp = (cx, cy, R, fn) => {
-      for (let dy = -R; dy <= R; dy++) {
+      for (let dy = -R * K; dy <= R * K; dy++) {
         const y = cy + dy; if (y < 0 || y >= H) continue;
-        for (let dx = -R; dx <= R; dx++) {
-          const d = Math.hypot(dx, dy); if (d > R) continue;
+        for (let dx = -R * K; dx <= R * K; dx++) {
+          const d = Math.hypot(dx, dy) / K; if (d > R) continue;
           fn(idx(cx + dx, y), d);
         }
       }
@@ -151,7 +152,7 @@
       e[i] = clamp(e[i] + up[i] * n - down[i], -9000, 8500);
       if (up[i] > 250 && e[i] > 0 && b.type[i] !== 2) w.oro[i] = 1;
     }
-    smooth(w, 0.12, true);
+    for (let k = 0; k < K; k++) smooth(w, 0.12, true);
   }
 
   function smooth(w, k, landOnly) {
@@ -169,7 +170,7 @@
   function mantleField(seed, landBias) {
     let p = new Float32Array(N);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) p[y * W + x] = fbm(x, y, 0.032, 2, seed) - (landBias ? landBias[y * W + x] : 0);
-    for (let k = 0; k < 4; k++) { // なめらかにして小さな渦を消す
+    for (let k = 0; k < 4 * K * K; k++) { // なめらかにして小さな渦を消す
       const o = Float32Array.from(p);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const i = y * W + x, u = y > 0 ? o[i - W] : o[i], d = y < H - 1 ? o[i + W] : o[i];
@@ -182,7 +183,7 @@
   }
   function mantleFlow(phi, i) { // [東向き, 北向き]
     const x = i % W, y = (i / W) | 0;
-    return [-(phi[idx(x + 1, y)] - phi[idx(x - 1, y)]) / 2, -(phi[idx(x, Math.max(0, y - 1))] - phi[idx(x, Math.min(H - 1, y + 1))]) / 2];
+    return [-(phi[idx(x + K, y)] - phi[idx(x - K, y)]) / 2, -(phi[idx(x, Math.max(0, y - K))] - phi[idx(x, Math.min(H - 1, y + K))]) / 2];
   }
   // プレートの配置から逆にマントルの流れを推定する(手描き・地球モデル用)
   function mantleFromPlates(w) {
@@ -231,7 +232,7 @@
   // いまの地形を残したまま、マントルとプレートだけ自動生成する(海嶺が大陸を避けるようにする)
   function autoPlates(w, seed) {
     const land = new Float32Array(N); for (let i = 0; i < N; i++) land[i] = w.elev[i] > 0 ? 0.16 : 0;
-    for (let k = 0; k < 6; k++) { const o = Float32Array.from(land); for (let y = 1; y < H - 1; y++) for (let x = 0; x < W; x++) { const i = y * W + x; land[i] = (o[i] + o[idx(x + 1, y)] + o[idx(x - 1, y)] + o[i - W] + o[i + W]) / 5; } }
+    for (let k = 0; k < 6 * K * K; k++) { const o = Float32Array.from(land); for (let y = 1; y < H - 1; y++) for (let x = 0; x < W; x++) { const i = y * W + x; land[i] = (o[i] + o[idx(x + 1, y)] + o[idx(x - 1, y)] + o[i - W] + o[i + W]) / 5; } }
     platesFromMantle(w, mantleField(seed, land));
   }
 
@@ -253,36 +254,38 @@
     const dLand = distField(land), dSea = distField(land.map(v => 1 - v));
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x, n = fbm(x, y, 0.2, 3, seed + 5);
-      if (land[i]) e[i] = 60 + Math.min(dSea[i], 7) * 40 + n * 260; // 安定陸塊: 楯状地・卓状地の低い平原や台地
+      const m = c[i] - thr; // 海岸線からの余裕(連続値)。これで海岸線がなめらかになる
+      if (land[i]) e[i] = Math.min(60 + Math.min(dSea[i], 7) * 40 + n * 260, 8 + m * 9000); // 安定陸塊: 楯状地・卓状地の低い平原や台地
       else { // 海洋底は海嶺から離れる(古くなる)ほど深い。大陸の縁には大陸棚
         const age = -2700 - 2500 * (1 - Math.exp(-dDiv[i] / 9)) - n * 500;
-        e[i] = dLand[i] <= 1 ? -160 - n * 200 : dLand[i] === 2 ? Math.max(age, -1800) : age;
+        const shelf = dLand[i] <= 1 ? -160 - n * 200 : dLand[i] <= 2 ? Math.max(age, -1800) : age;
+        e[i] = Math.min(Math.max(shelf, -8 + m * 60000), -2);
       }
     }
     for (let k = 0; k < 2; k++) orogeny(w, seed + k); // 新期造山帯・海溝・弧状列島・海嶺・地溝帯
     // 古期造山帯: プレート境界から離れた大陸内部の、侵食されて低くなだらかな山地
     for (let k = 0, made = 0; k < 400 && made < 4; k++) {
-      let x = Math.floor(r() * W), y = 6 + Math.floor(r() * (H - 12)), ang = r() * Math.PI * 2;
+      let x = Math.floor(r() * W), y = 6 * K + Math.floor(r() * (H - 12 * K)), ang = r() * Math.PI * 2;
       if (!land[y * W + x] || dCon[y * W + x] < 7 || dSea[y * W + x] < 2) continue;
-      const h = 800 + r() * 700, len = 7 + Math.floor(r() * 8);
+      const h = 800 + r() * 700, len = (7 + Math.floor(r() * 8)) * K;
       for (let s = 0; s < len; s++) {
-        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        for (let dy = -2 * K; dy <= 2 * K; dy++) for (let dx = -2 * K; dx <= 2 * K; dx++) {
           const yy = Math.round(y) + dy; if (yy < 0 || yy >= H) continue;
-          const j = idx(Math.round(x) + dx, yy), add = h * Math.exp(-(dx * dx + dy * dy) / 1.3);
+          const j = idx(Math.round(x) + dx, yy), add = h * Math.exp(-(dx * dx + dy * dy) / K / K / 1.3);
           if (e[j] > 0 && w.oro[j] !== 1 && e[j] < 150 + add * 1.2) { e[j] = Math.max(e[j], 150 + add * (0.7 + 0.5 * fbm(j % W, yy, 0.4, 2, seed + 9))); if (add > 350) w.oro[j] = 2; }
         }
-        ang += (r() - 0.5) * 0.7; x += Math.cos(ang); y += Math.sin(ang) * 0.8;
-        if (y < 3 || y > H - 4) break;
+        ang += (r() - 0.5) * 0.7 / K; x += Math.cos(ang); y += Math.sin(ang) * 0.8;
+        if (y < 3 * K || y > H - 4 * K) break;
       }
       made++;
     }
     // ホットスポット: プレート内部の火山島列。プレートが動く向きに古い島(低い島・海山)が並ぶ
     for (let k = 0, made = 0; k < 300 && made < 3; k++) {
-      const x = Math.floor(r() * W), y = 12 + Math.floor(r() * (H - 24)), i = y * W + x, p = w.plates[w.plate[i]];
+      const x = Math.floor(r() * W), y = 12 * K + Math.floor(r() * (H - 24 * K)), i = y * W + x, p = w.plates[w.plate[i]];
       if (e[i] > -3000 || dDiv[i] < 6 || dCon[i] < 6 || dLand[i] < 6 || p.speed < 2) continue;
       const a = p.dir * Math.PI / 180;
       for (let s = 0; s < 5; s++) {
-        const j = idx(Math.round(x + Math.sin(a) * s * 2), clamp(Math.round(y - Math.cos(a) * s * 2), 0, H - 1));
+        const j = idx(Math.round(x + Math.sin(a) * s * 2 * K), clamp(Math.round(y - Math.cos(a) * s * 2 * K), 0, H - 1));
         if (w.plate[j] !== w.plate[i]) break;
         e[j] = 1100 - s * 420; for (const q of [idx(j % W + 1, (j / W) | 0), idx(j % W - 1, (j / W) | 0)]) if (e[q] < -1500) e[q] = -1500;
       }
@@ -291,30 +294,8 @@
     return w;
   }
 
-  /* ---- 地球(簡略モデル) ---- */
-  const EARTH_LAND = [
-    [[-168, 66], [-156, 71], [-125, 70], [-95, 69], [-82, 67], [-78, 62], [-65, 60], [-56, 52], [-66, 45], [-70, 42], [-76, 35], [-81, 31], [-80, 25], [-82, 29], [-90, 30], [-97, 27], [-97, 20], [-91, 18], [-87, 21], [-87, 16], [-83, 10], [-78, 8], [-80, 7], [-86, 12], [-95, 16], [-105, 20], [-110, 24], [-113, 30], [-117, 33], [-124, 40], [-124, 48], [-135, 58], [-150, 60], [-158, 57], [-165, 60]],
-    [[-55, 60], [-44, 60], [-22, 70], [-20, 80], [-40, 83], [-60, 81], [-70, 77], [-55, 70]],
-    [[-78, 8], [-72, 12], [-62, 10], [-52, 5], [-50, 0], [-35, -6], [-39, -15], [-41, -22], [-48, -26], [-53, -34], [-58, -38], [-65, -42], [-66, -48], [-69, -53], [-74, -52], [-73, -40], [-71, -30], [-70, -18], [-76, -14], [-81, -5], [-80, 0], [-77, 4]],
-    [[-17, 15], [-16, 22], [-10, 29], [-6, 35], [10, 37], [11, 33], [20, 31], [32, 31], [35, 25], [38, 18], [43, 12], [51, 11], [48, 4], [40, -3], [39, -10], [40, -16], [35, -24], [32, -29], [26, -34], [19, -34], [15, -27], [12, -17], [13, -8], [9, -1], [9, 4], [4, 6], [-8, 4], [-13, 8]],
-    [[44, -16], [49, -12], [50, -17], [47, -25], [44, -23]],
-    [[-9, 37], [-9, 43], [-1, 44], [-4, 48], [2, 51], [5, 53], [9, 54], [8, 57], [6, 58], [5, 62], [12, 66], [18, 70], [28, 71], [40, 67], [44, 68], [60, 69], [68, 72], [80, 73], [100, 77], [112, 74], [130, 72], [150, 71], [170, 70], [180, 68], [180, 65], [178, 62], [170, 60], [163, 58], [162, 55], [156, 51], [156, 57], [160, 61], [155, 59], [143, 59], [135, 54], [140, 52], [138, 46], [132, 43], [128, 40], [129, 35], [126, 34], [126, 38], [122, 40], [118, 39], [122, 37], [119, 35], [122, 31], [120, 26], [114, 22], [108, 21], [106, 18], [109, 13], [105, 9], [100, 13], [99, 8], [103, 1.5], [101, 3], [98, 8], [98, 16], [94, 17], [92, 22], [87, 21], [80, 15], [80, 10], [77, 8], [73, 18], [72, 21], [67, 24], [62, 25], [57, 26], [56, 27], [51, 28], [48, 30], [51, 25], [56, 24], [59, 22], [55, 17], [45, 13], [43, 13], [39, 21], [35, 28], [35, 31], [36, 36], [28, 36], [26, 40], [29, 41], [40, 41], [41, 43], [37, 45], [33, 45], [30, 46], [28, 42], [24, 40], [23, 37], [21, 38], [19, 42], [14, 45], [12, 44], [18, 40], [16, 38], [12, 42], [9, 44], [3, 43], [0, 39], [-2, 37], [-5, 36]],
-    [[-180, 68], [-170, 66], [-173, 64], [-180, 63]],
-    [[-5, 50], [1, 51], [0, 54], [-3, 58], [-6, 57], [-3, 54], [-5, 52]], [[-10, 52], [-6, 52], [-6, 55], [-9, 54]], [[-24, 64], [-14, 64], [-14, 66], [-22, 66]],
-    [[130, 31], [132, 34], [136, 34], [140, 35], [142, 39], [141, 41], [140, 40], [137, 37], [133, 35], [130, 33]], [[140, 42], [145, 43], [142, 45], [140, 43]],
-    [[120, 14], [122, 18], [124, 13], [126, 7], [122, 7], [121, 11]], [[109, 1], [113, -3], [116, -4], [118, 1], [117, 6], [114, 5]],
-    [[95, 5], [98, 4], [104, -2], [106, -6], [102, -4], [97, 1]], [[105, -6], [115, -6.5], [115, -8.5], [105, -8]], [[119, -5], [120, 1], [124, 1], [122, -4]],
-    [[131, -1], [138, -2], [146, -6], [150, -10], [143, -9], [138, -8], [133, -4]], [[79, 6], [81, 9.5], [82.5, 7]],
-    [[114, -22], [122, -18], [129, -15], [131, -12], [136, -12], [136, -16], [140, -17], [142, -11], [146, -19], [153, -25], [153, -31], [150, -37], [146, -39], [140, -38], [135, -35], [129, -32], [123, -34], [115, -34]],
-    [[145, -41], [148.5, -41], [147, -43.5]], [[173, -35], [178, -38], [175, -41], [173, -39]], [[172, -41], [174, -42], [170, -46], [167, -46]],
-    [[-180, -90], [-180, -78], [-150, -77], [-100, -73], [-75, -72], [-62, -64], [-58, -64], [-60, -74], [-30, -77], [-10, -70], [30, -69], [60, -67], [90, -66], [120, -66], [150, -68], [170, -72], [180, -78], [180, -90]],
-    [[-84, 22], [-75, 20], [-74, 21], [-80, 23.5]], [[-74, 18], [-68, 18], [-70, 20]]
-  ];
-  const EARTH_WATER = [
-    [[-94, 60], [-85, 64], [-78, 60], [-80, 52], [-88, 56]], [[47, 45], [53, 46], [54, 38], [49, 37]],
-    [[11, 55], [20, 55], [23, 59], [29, 60], [22, 60], [21, 64], [24, 65], [18, 62], [17, 58], [13, 56]]
-  ];
-  // [経路, 高さm, 幅(セル)]
+  /* ---- 地球の主な山脈(大地形の区分用) ---- */
+  // [経路(経度,緯度), 高さm, 幅(2°セル単位)]
   const EARTH_MTS = [
     [[[-135, 60], [-120, 50], [-112, 42], [-106, 35]], 2300, 2.6], [[[-121, 46], [-118, 37]], 1500, 0.8], [[[-106, 30], [-100, 20], [-88, 14]], 2000, 1.5],
     [[[-84, 34], [-74, 42]], 800, 1], [[[-75, 8], [-78, -2], [-76, -10], [-69, -17], [-69, -28], [-71, -40], [-72, -50]], 4200, 1.3],
@@ -327,75 +308,32 @@
     [[[40, 25], [44, 15]], 1700, 1.2], [[[-45, 62], [-40, 78]], 2300, 4], [[[-170, -84], [-60, -82], [0, -80], [90, -78], [170, -82]], 2800, 6]
   ];
   const EARTH_NEW = [0, 1, 2, 4, 7, 10, 11, 12, 13, 15, 20, 21, 22, 27, 28], EARTH_OLD = [3, 8, 9, 14, 16, 26]; // EARTH_MTS の番号
-  function inPoly(px, py, poly) {
-    let c = false;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const [xi, yi] = poly[i], [xj, yj] = poly[j];
-      if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) c = !c;
-    }
-    return c;
-  }
   function segDist(px, py, ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
     const t = l2 ? clamp(((px - ax) * dx + (py - ay) * dy) / l2, 0, 1) : 0;
     return Math.hypot(px - ax - t * dx, py - ay - t * dy);
   }
-  function earthWorld() {
-    const w = newWorld(); w.name = '地球(簡略モデル)';
-    const land = new Uint8Array(N);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const lo = lonOf(x), la = latOf(y);
-      let L = false;
-      for (const p of EARTH_LAND) if (inPoly(lo, la, p)) { L = true; break; }
-      if (L) for (const p of EARTH_WATER) if (inPoly(lo, la, p)) { L = false; break; }
-      land[y * W + x] = L ? 1 : 0;
-    }
-    const dLand = distField(land), sea = land.map(v => 1 - v), dSea = distField(sea);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const i = y * W + x, lo = lonOf(x), la = latOf(y), n = fbm(x, y, 0.2, 3, 42);
-      if (!land[i]) { w.elev[i] = -150 - Math.min(dLand[i], 6) / 6 * 3900 - n * 600; continue; }
-      let e = 40 + Math.min(dSea[i], 6) * 35 + n * 160, m = 0, mk = -1;
-      EARTH_MTS.forEach(([path, h, wd], mi) => { for (let k = 0; k < path.length - 1; k++) {
-        const d = segDist(lo, la, path[k][0], path[k][1], path[k + 1][0], path[k + 1][1]) / 2 / 0.62;
-        const v = h * Math.exp(-(d / wd) * (d / wd)); if (v > m) { m = v; mk = mi; }
-      } });
-      w.elev[i] = e + m * (0.8 + 0.4 * n);
-      if (m > 300) w.oro[i] = EARTH_NEW.includes(mk) ? 1 : EARTH_OLD.includes(mk) ? 2 : 0;
-    }
-    // プレート(簡略)
-    const P = [['太平洋プレート', 315, 9], ['北アメリカプレート', 270, 2], ['ユーラシアプレート', 90, 1], ['アフリカプレート', 45, 2], ['南アメリカプレート', 270, 3],
-      ['インド・オーストラリアプレート', 0, 7], ['南極プレート', 0, 0], ['ナスカプレート', 90, 7], ['フィリピン海プレート', 315, 7]];
-    w.plates = P.map((p, i) => mkPlate(i, p[0], p[1], p[2]));
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const lo = lonOf(x), la = latOf(y);
-      const ridge = la > 15 ? -32 - (la > 50 ? 0 : (50 - la) * 0.35) : -14 - Math.max(0, la + 5) * 0.9; // 大西洋中央海嶺の経度
-      let p;
-      if (la < -58 || (la < -48 && (lo < -75 || lo > 150 || (lo > -20 && lo < 60)))) p = 6;
-      else if (lo >= 124 && lo < 146 && la > 4 && la < 34 && !(lo < 132 && la > 30)) p = 8;
-      else if (lo >= -112 && lo < -71 && la < 4 && la > -46 && lo < -70 - (la < -18 ? 2 : la > -6 ? 9 : 5)) p = 7;
-      else if (lo >= 146 || lo < -168 || (lo < -110 && la < 22) || (lo < -125 && la < 56) || (lo < -116 && la < 32)) p = (lo >= 146 && lo < 166 && la < -8 && la > -48) ? 5 : (lo >= 146 && la > 50 && lo < 164) ? 1 : 0;
-      else if (lo < ridge) p = la > 14 ? 1 : 4;
-      else if (lo >= 60 && la < (lo < 98 ? 27 : lo < 122 ? -8 : -2)) p = 5;
-      else if (la > 36 || lo > 58 || (lo > 34 && la > 38)) p = 2;
-      else p = 3;
-      w.plate[y * W + x] = p;
-    }
-    // 狭まる境界に沿う島々(日本・フィリピン・インドネシアなど)も新期造山帯
-    const eb = boundaries(w), dc = distField(eb.type.map(t => t === 1 ? 1 : 0));
-    for (let i = 0; i < N; i++) if (w.elev[i] > 0 && !w.oro[i] && dc[i] <= 1 && Math.abs(latOf((i / W) | 0)) < 62) w.oro[i] = 1;
-    return w;
-  }
-
   /* ---- 地球(実データ) ---- */
   function b64bytes(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
-  function realEarthWorld(D) {
+  // data/earth.js(gzip圧縮)を展開して型付き配列にする。ブラウザでは Promise、Node では同期で使える unpackEarth を使う
+  function unpackEarth(D, raw) {
+    const E = { plates: D.plates }, T = { i1: Int8Array, u1: Uint8Array, i2: Int16Array, u2: Uint16Array };
+    let off = 0;
+    for (const [name, dt, len] of D.layout) { const bytes = len * T[dt].BYTES_PER_ELEMENT; E[name] = new T[dt](raw.buffer.slice(raw.byteOffset + off, raw.byteOffset + off + bytes)); off += bytes; }
+    return E;
+  }
+  function loadEarth(D) {
+    if (!D || D.W !== W || typeof DecompressionStream === 'undefined') return Promise.reject(new Error('earth data unavailable'));
+    const st = new Blob([b64bytes(D.gz)]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Response(st).arrayBuffer().then(buf => unpackEarth(D, new Uint8Array(buf)));
+  }
+  function realEarthWorld(E) {
     const w = newWorld(); w.name = '地球(実データ)'; w.real = true;
-    const e = new Int16Array(b64bytes(D.elev).buffer); for (let i = 0; i < N; i++) w.elev[i] = e[i];
-    w.plate.set(b64bytes(D.plate));
-    w.plates = D.plates.map((p, i) => mkPlate(i, p.name, p.dir, p.speed));
-    const vx = new Int8Array(b64bytes(D.pvx).buffer), vy = new Int8Array(b64bytes(D.pvy).buffer);
+    for (let i = 0; i < N; i++) w.elev[i] = E.elev[i];
+    w.plate.set(E.plate);
+    w.plates = E.plates.map((p, i) => mkPlate(i, p.name, p.dir, p.speed));
     w.pvx = new Float32Array(N); w.pvy = new Float32Array(N);
-    for (let i = 0; i < N; i++) { w.pvx[i] = vx[i] / 10; w.pvy[i] = vy[i] / 10; }
+    for (let i = 0; i < N; i++) { w.pvx[i] = E.pvx[i] / 10; w.pvy[i] = E.pvy[i] / 10; }
     // 大地形の区分は教科書的な造山帯の位置を手で指定したもの(データセットではない)
     const dc = distField(boundaries(w).type.map(t => t === 1 ? 1 : 0));
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -409,6 +347,6 @@
     return w;
   }
 
-  const API = { realEarthWorld, b64bytes, W, H, N, latOf, lonOf, idx, clamp, rng, fbm, newWorld, mkPlate, distField, boundaries, orogeny, smooth, randomWorld, earthWorld, mantleField, mantleFlow, mantleFromPlates, platesFromMantle, autoPlates, PLATE_COLORS };
+  const API = { realEarthWorld, loadEarth, unpackEarth, b64bytes, K, DEG, W, H, N, latOf, lonOf, idx, clamp, rng, fbm, newWorld, mkPlate, distField, boundaries, orogeny, smooth, randomWorld, mantleField, mantleFlow, mantleFromPlates, platesFromMantle, autoPlates, PLATE_COLORS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.Core = API;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,10 +1,11 @@
 // 簡略気候モデルの検証: 実在の地球の地形でシミュレーションし、観測データから判定したケッペン区分と陸セルごとに比べる
 // 使い方: node tools/calibrate.js
-global.window = {}; require('../data/earth.js');
+require('../data/earth.js');
 const Core = require('../js/core.js'), Climate = require('../js/climate.js');
-const w = Core.realEarthWorld(window.EARTH_DATA);
+const D = globalThis.EARTH_DATA, E = Core.unpackEarth(D, require('zlib').gunzipSync(Buffer.from(D.gz, 'base64')));
+const w = Core.realEarthWorld(E);
 const model = Climate.simulate(w), mk = model.kop.slice(), mT = Float32Array.from(model.tAnn), mP = Float32Array.from(model.pAnn);
-const obs = Climate.applyObserved(Climate.simulate(w), w, window.EARTH_DATA);
+const obs = Climate.applyObserved(Climate.simulate(w), w, E);
 let n = 0, same = 0, grp = 0, dT = 0, by = {};
 for (let i = 0; i < Core.N; i++) {
   if (!obs.land[i]) continue;

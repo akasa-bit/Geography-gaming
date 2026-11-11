@@ -1,7 +1,7 @@
 /* 画面の制御: 地図描画・地形エディタ・気候の観察・クイズ */
 (function () {
   'use strict';
-  const { W, H, N, latOf, lonOf, idx, clamp } = Core;
+  const { W, H, N, K, DEG, latOf, lonOf, idx, clamp } = Core;
   const G = Geo;
   const $ = id => document.getElementById(id);
   const el = (tag, attrs, html) => { const e = document.createElement(tag); if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]); if (html != null) e.innerHTML = html; return e; };
@@ -13,11 +13,11 @@
   /* ---------- 状態 ---------- */
   const S = {
     world: null, sim: null, mode: 'terrain', layer: 'terrain', month: -1,
-    tool: 'land', brush: 3, activePlate: 0, undo: [],
+    tool: 'land', brush: 4, activePlate: 0, undo: [],
     inspect: -1, quiz: null, review: null, stats: store.get('geo-quiz-stats') || { n: 0, sum: 0, by: {} }
   };
   const cv = $('map'), ctx = cv.getContext('2d');
-  const SC = 3, BW = W * SC, BH = H * SC; // 下絵は1セル3px、表示はその2倍
+  const SC = 3, BW = W * SC, BH = H * SC; // 下絵は1セル(1°)=3px
   const base = document.createElement('canvas'); base.width = BW; base.height = BH;
   const bctx = base.getContext('2d'), img = bctx.createImageData(BW, BH);
   const PX = cv.width / W;
@@ -110,7 +110,7 @@
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(hx - ux * hs * 0.6, hy - uy * hs * 0.6); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx - ux * hs - uy * hs * 0.6, hy - uy * hs + ux * hs * 0.6); ctx.lineTo(hx - ux * hs + uy * hs * 0.6, hy - uy * hs - ux * hs * 0.6); ctx.closePath(); ctx.fill();
   }
-  const cx = x => (x + 0.5) * PX, cy = y => (y + 0.5) * PX, yLat = la => (89 - la) / 2 * PX + PX / 2;
+  const cx = x => (x + 0.5) * PX, cy = y => (y + 0.5) * PX, yLat = la => (90 - la) / DEG * PX;
 
   function draw() {
     ctx.imageSmoothingEnabled = true;
@@ -127,7 +127,7 @@
     }
     if (S.layer === 'mantle') { // マントル表層の流れ(上昇流→下降流)
       const phi = mantleOf(w);
-      for (let y = 2; y < H - 1; y += 4) for (let x = 1 + (y % 8 ? 2 : 0); x < W; x += 5) {
+      for (let y = 2 * K; y < H - K; y += 4 * K) for (let x = K + (y % (8 * K) ? 2 * K : 0); x < W; x += 5 * K) {
         const f = Core.mantleFlow(phi, y * W + x), mg = Math.hypot(f[0], f[1]); if (mg < 0.004) continue;
         const s = Math.min(17, 6 + mg * 420) / mg;
         arrow(cx(x) - f[0] * s / 2, cy(y) + f[1] * s / 2, f[0] * s, -f[1] * s, 'rgba(20,20,30,0.85)', 1.5);
@@ -159,7 +159,7 @@
       });
     }
     if (sim && $('ovCurrent').checked) {
-      for (let y = 2; y < H - 2; y += 3) for (let x = (y % 2) * 2; x < W; x += 4) {
+      for (let y = 2 * K; y < H - 2 * K; y += 3 * K) for (let x = ((y / (3 * K)) & 1) * 2 * K; x < W; x += 4 * K) {
         const i = y * W + x; if (sim.land[i]) continue;
         const u = sim.cu[i], v = sim.cv[i], mg = Math.hypot(u, v); if (mg < 0.3) continue;
         const k = sim.ckind[i], col = k > 0 ? '#d9281e' : k < 0 ? '#1846c9' : 'rgba(255,255,255,0.75)';
@@ -169,7 +169,7 @@
     }
     if (sim && $('ovWind').checked) {
       const m = S.month < 0 ? 6 : S.month;
-      for (let y = 2; y < H - 1; y += 4) for (let x = 1 + (y % 8 ? 2 : 0); x < W; x += 5) {
+      for (let y = 2 * K; y < H - K; y += 4 * K) for (let x = K + (y % (8 * K) ? 2 * K : 0); x < W; x += 5 * K) {
         const i = y * W + x, u = sim.wu[m][i], v = sim.wv[m][i], mg = Math.hypot(u, v); if (mg < 0.12) continue;
         const s = 15 * Math.min(1.3, mg) / mg;
         arrow(cx(x) - u * s / 2, cy(y) + v * s / 2, u * s, -v * s, 'rgba(20,20,30,0.82)', 1.4);
@@ -226,7 +226,12 @@
 
   /* ---------- モード切り替え ---------- */
   function setMode(mode) {
-    if (mode !== 'terrain' && !S.sim) runSim();
+    if (mode !== 'terrain' && !S.sim) { // 計算に1〜2秒かかるので、先に表示を出してから実行
+      $('readout').textContent = S.world.real ? '観測データを読み込んでいます…' : '気候を計算しています…';
+      document.body.classList.add('busy');
+      setTimeout(() => { runSim(); document.body.classList.remove('busy'); $('readout').textContent = '地図にカーソルを合わせると、その地点の情報が出ます。'; setMode(mode); }, 40);
+      return;
+    }
     S.mode = mode;
     for (const b of document.querySelectorAll('.step')) b.setAttribute('aria-current', b.dataset.mode === mode ? 'step' : 'false');
     $('panelTerrain').hidden = mode !== 'terrain'; $('panelClimate').hidden = mode !== 'climate'; $('panelQuiz').hidden = mode !== 'quiz';
@@ -236,10 +241,10 @@
     if (mode === 'quiz') { if (!S.quiz) newQuestion(); else renderQuiz(); if (!layerAllowed(S.layer)) S.layer = 'terrain'; }
     buildLayerChips(); refresh();
   }
-  const realEarth = () => Core.realEarthWorld(window.EARTH_DATA);
+  const realEarth = () => Core.realEarthWorld(window.EARTH);
   function runSim() {
     S.sim = Climate.simulate(S.world);
-    if (S.world.real) Climate.applyObserved(S.sim, S.world, window.EARTH_DATA); // 実在の地球は観測データを使う
+    if (S.world.real) Climate.applyObserved(S.sim, S.world, window.EARTH); // 実在の地球は観測データを使う
     S.quiz = null; S.inspect = -1;
     $('realNote').hidden = !S.world.real; $('modelNote').hidden = !!S.world.real;
   }
@@ -267,7 +272,7 @@
     }, 600);
   }
   function loadWorld() {
-    const d = store.get('geo-world'); if (d && d.real) return realEarth();
+    const d = store.get('geo-world'); if (d && d.real) return window.EARTH ? realEarth() : null;
     if (!d || !d.e) return null;
     try {
       const u8 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)), w = Core.newWorld();
@@ -457,7 +462,7 @@
       <h3>くらしと産業</h3>${answerNotes(k.code)}</div>`;
     drawCharts(pd);
   }
-  const realHint = () => S.world.real ? '<p class="hint">気温・降水量は観測データ(2°四方の平均)。上の因子の説明だけは簡略モデルによる推定です。</p>' : '';
+  const realHint = () => S.world.real ? '<p class="hint">気温・降水量は観測データ(1°四方の平均)。上の因子の説明だけは簡略モデルによる推定です。</p>' : '';
 
   /* ---------- 3. クイズ ---------- */
   const PTS = { kop: 40, veg: 20, soil: 10, agri: 15, crops: 15 };
@@ -497,7 +502,7 @@
     if (q.done) return renderResult();
     const pd = q.pd, showLoc = $('showLoc').checked;
     body.innerHTML = '';
-    const head = el('div', { class: 'block' }, `<p class="lead">${S.world.real ? '実在の地球の、ある地点(2°四方の平均)の観測値です。' : ''}赤い印の地点${showLoc ? '' : '(地図には非表示)'}の気候です。グラフを読み取り、気候区分・植生・土壌・農業を答えましょう。</p>${chartsHTML(true, pd)}${factsHTML(pd, showLoc)}`);
+    const head = el('div', { class: 'block' }, `<p class="lead">${S.world.real ? '実在の地球の、ある地点(1°四方の平均)の観測値です。' : ''}赤い印の地点${showLoc ? '' : '(地図には非表示)'}の気候です。グラフを読み取り、気候区分・植生・土壌・農業を答えましょう。</p>${chartsHTML(true, pd)}${factsHTML(pd, showLoc)}`);
     body.appendChild(head);
     const mk = (title, pts, node, hint) => { const d = el('div', { class: 'q' }, `<h3>${title}<span>${pts}点</span></h3>${hint ? `<p class="hint">${hint}</p>` : ''}`); d.appendChild(node); body.appendChild(d); };
     const toggle = (c, k) => { const j = c.indexOf(k); if (j >= 0) c.splice(j, 1); else { if (c.length >= 3) c.shift(); c.push(k); } };
@@ -593,7 +598,7 @@
     worldChanged(false); buildPlates(); buildLayerChips(); refresh();
   };
   $('orogenyBtn').onclick = () => { pushUndo(); unreal(); Core.orogeny(S.world, 1 + Math.floor(Math.random() * 999)); S.world.name = S.world.name || '自作の惑星'; worldChanged(false); buildLayerChips(); refresh(); };
-  $('runClimate').onclick = () => { runSim(); setMode('climate'); window.scrollTo(0, 0); };
+  $('runClimate').onclick = () => { S.sim = null; setMode('climate'); window.scrollTo(0, 0); };
   $('toQuiz').onclick = () => { setMode('quiz'); window.scrollTo(0, 0); };
   for (const b of document.querySelectorAll('.step')) b.onclick = () => setMode(b.dataset.mode);
   $('month').onchange = e => { S.month = +e.target.value; refresh(); };
@@ -609,9 +614,13 @@
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { draw(); redrawCharts(); });
 
   /* ---------- 起動 ---------- */
-  S.world = loadWorld() || realEarth();
-  $('worldName').textContent = S.world.name || '自作の惑星';
-  buildToolChips(); buildPlates(); buildLayerChips();
-  setMode('terrain');
+  function boot() {
+    S.world = loadWorld() || (window.EARTH ? realEarth() : Core.randomWorld(1 + Math.floor(Math.random() * 9999)));
+    $('worldName').textContent = S.world.name || '自作の惑星';
+    $('preEarth').disabled = !window.EARTH;
+    buildToolChips(); buildPlates(); buildLayerChips();
+    setMode('terrain');
+  }
+  Core.loadEarth(window.EARTH_DATA).then(E => { window.EARTH = E; }, () => { window.EARTH = null; }).then(boot);
   window.__geo = S;
 })();

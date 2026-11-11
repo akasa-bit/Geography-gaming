@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""実在の地球のデータを 2°グリッド(180×90)に集計して data/earth.js を作る。
+"""実在の地球のデータを 1°グリッド(360×180)に集計して data/earth.js を作る。
 
 使い方: python3 tools/build_earth_data.py <ダウンロード済みデータのフォルダ>
 必要なファイル(入手先は data/SOURCES.md):
   etopo2022.txt  udel_air.nc  udel_precip.nc  oisst.nc  air2m.nc  gpcp.nc
   uwnd.nc  vwnd.nc  ucur.txt  vcur.txt  pb_plates.txt  pb_poles.txt
 """
-import base64, json, math, os, re, sys
+import base64, gzip, json, math, os, re, sys
 import numpy as np
 import netCDF4
 
 R = sys.argv[1].rstrip('/') + '/'
-W, H = 180, 90
-LAT = 89 - 2 * np.arange(H)          # セル中心の緯度
-LON = -179 + 2 * np.arange(W)        # セル中心の経度
+W, H = 360, 180
+LAT = 89.5 - np.arange(H)            # セル中心の緯度
+LON = -179.5 + np.arange(W)          # セル中心の経度
 DAYS = np.array([31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31])
 
 
@@ -38,7 +38,7 @@ def block_mean(a, fy, fx):
 
 
 def sample(lat, lon, a):
-    """粗い格子を 2°セル中心へ双線形補間(経度は周期、欠損は無視)"""
+    """粗い格子を 1°セル中心へ双線形補間(経度は周期、欠損は無視)"""
     out = np.full(a.shape[:-2] + (H, W), np.nan)
     dlat = lat[0] - lat[1]; dlon = lon[1] - lon[0]
     for y in range(H):
@@ -77,7 +77,7 @@ def dods_ascii(name):
 
 # ---------- 標高・水深: NOAA ETOPO 2022 (氷床表面) ----------
 e = dods_ascii('etopo2022.txt')
-lat, lon, z = to_grid(e['lat'].ravel(), e['lon'].ravel(), e['z'])   # 20分間隔 540×1080
+lat, lon, z = to_grid(e['lat'].ravel(), e['lon'].ravel(), e['z'])   # 10分間隔 1080×2160
 z6 = z.reshape(H, 6, W, 6)
 landfrac = (z6 > 0).mean(axis=(1, 3))
 land = landfrac >= 0.5
@@ -91,9 +91,9 @@ elev = np.where(land, np.maximum(eland, 1), np.minimum(esea, -1))
 # ---------- 気温 ----------
 _, _, t_udel = nc('udel_air.nc', 'air')          # 陸上 0.5° (℃)
 _, _, p_udel = nc('udel_precip.nc', 'precip')    # 陸上 0.5° (cm/月)
-t_land = block_mean(t_udel, 4, 4); p_land = block_mean(p_udel, 4, 4) * 10
+t_land = block_mean(t_udel, 2, 2); p_land = block_mean(p_udel, 2, 2) * 10
 _, _, sst = nc('oisst.nc', 'sst')                # 海面水温 1° (℃)
-t_sea = block_mean(sst, 2, 2)
+t_sea = block_mean(sst, 1, 1)
 la, lo, a2 = nc('air2m.nc', 'air'); t_ncep = sample(la, lo, a2) - 273.15   # 再解析 2m気温(欠損の補完用)
 la, lo, gp = nc('gpcp.nc', 'precip'); p_gpcp = sample(la, lo, gp) * DAYS[:, None, None]  # mm/日 → mm/月
 
@@ -119,9 +119,9 @@ def godas(name, var):
 gl, go, gu = godas('ucur.txt', 'ucur'); _, _, gv = godas('vcur.txt', 'vcur')
 cu = np.zeros((H, W)); cv = np.zeros((H, W))
 for y in range(H):
-    ys = np.where(np.abs(gl - LAT[y]) <= 1)[0]
+    ys = np.where(np.abs(gl - LAT[y]) <= 0.5)[0]
     for x in range(W):
-        xs = np.where(np.abs(go - LON[x]) <= 1)[0]
+        xs = np.where(np.abs(go - LON[x]) <= 0.5)[0]
         if len(ys) and len(xs):
             a = gu[np.ix_(ys, xs)]; b = gv[np.ix_(ys, xs)]
             if np.isfinite(a).any(): cu[y, x] = np.nanmean(a); cv[y, x] = np.nanmean(b)
@@ -188,16 +188,13 @@ NAMES = {'AF': 'アフリカプレート', 'AN': '南極プレート', 'AR': '�
 lab = np.array([MERGE.get(codes[k], codes[k]) for k in orig]).reshape(H, W)
 while True:   # 主要プレート以外・小さすぎるものは、最も長く接する隣へ
     ids, cnt = np.unique(lab, return_counts=True)
-    small = [i for i, c in zip(ids, cnt) if i not in NAMES or c < 6]
+    small = [i for i, c in zip(ids, cnt) if i not in NAMES or c < 24]
     if not small: break
-    s = min(small, key=lambda i: cnt[list(ids).index(i)])
-    adj = {}
-    for y in range(H):
-        for x in range(W):
-            if lab[y, x] != s: continue
-            for yy, xx in ((y, (x + 1) % W), (y, (x - 1) % W), (max(y - 1, 0), x), (min(y + 1, H - 1), x)):
-                if lab[yy, xx] != s: adj[lab[yy, xx]] = adj.get(lab[yy, xx], 0) + 1
-    lab[lab == s] = max(adj, key=adj.get)
+    sm = min(small, key=lambda i: cnt[list(ids).index(i)])
+    m = lab == sm; adj = {}
+    for nb in (np.roll(lab, 1, 1), np.roll(lab, -1, 1), np.vstack([lab[:1], lab[:-1]]), np.vstack([lab[1:], lab[-1:]])):
+        for v in nb[m & (nb != sm)]: adj[v] = adj.get(v, 0) + 1
+    lab[m] = max(adj, key=adj.get)
 ids, cnt = np.unique(lab, return_counts=True)
 order = [i for _, i in sorted(zip(-cnt, ids))]
 plate = np.array([order.index(v) for v in lab.ravel()], dtype=np.uint8)
@@ -208,30 +205,30 @@ for k, c in enumerate(order):
 print('プレート', [(p['name'], int((plate == k).sum()), p['dir'], p['speed']) for k, p in enumerate(plates)])
 
 # ---------- 書き出し ----------
-def b64(a, dt):
-    return base64.b64encode(np.ascontiguousarray(a, dtype=dt).tobytes()).decode()
-out = {
-    'W': W, 'H': H,
-    'elev': b64(np.round(elev), '<i2'),
-    'plate': b64(plate, 'u1'), 'plates': plates,
-    'pvx': b64(np.clip(np.round(pvx * 10), -127, 127), 'i1'), 'pvy': b64(np.clip(np.round(pvy * 10), -127, 127), 'i1'),   # 0.1 cm/年
-    'T': b64(np.round(T * 10), '<i2'),                                  # 0.1 ℃, [月][y][x]
-    'P': b64(np.clip(np.round(P), 0, 65535), '<u2'),                    # mm/月
-    'wu': b64(np.clip(np.round(wu * 10), -127, 127), 'i1'), 'wv': b64(np.clip(np.round(wv * 10), -127, 127), 'i1'),   # 0.1 m/s
-    'cu': b64(np.clip(np.round(cu * 200), -127, 127), 'i1'), 'cv': b64(np.clip(np.round(cv * 200), -127, 127), 'i1'),  # 0.5 cm/s
-    'sstA': b64(np.clip(np.round(sst_anom * 10), -127, 127), 'i1'),     # 0.1 ℃
-    'tsrc': b64(src_t[0], 'u1'),                                        # 1=陸上観測格子 2=海面水温 3=再解析で補完
-}
+fields = [
+    ('elev', 'i2', np.round(elev)),
+    ('plate', 'u1', plate),
+    ('pvx', 'i1', np.clip(np.round(pvx * 10), -127, 127)), ('pvy', 'i1', np.clip(np.round(pvy * 10), -127, 127)),   # 0.1 cm/年
+    ('T', 'i2', np.round(T * 10)),                                   # 0.1 ℃, [月][y][x]
+    ('P', 'u2', np.clip(np.round(P), 0, 65535)),                     # mm/月
+    ('wu', 'i1', np.clip(np.round(wu * 10), -127, 127)), ('wv', 'i1', np.clip(np.round(wv * 10), -127, 127)),       # 0.1 m/s
+    ('cu', 'i1', np.clip(np.round(cu * 200), -127, 127)), ('cv', 'i1', np.clip(np.round(cv * 200), -127, 127)),     # 0.5 cm/s
+    ('sstA', 'i1', np.clip(np.round(sst_anom * 10), -127, 127)),     # 0.1 ℃
+]
+NP = {'i1': 'i1', 'u1': 'u1', 'i2': '<i2', 'u2': '<u2'}
+blob = b''.join(np.ascontiguousarray(a, dtype=NP[dt]).tobytes() for _, dt, a in fields)
+out = {'W': W, 'H': H, 'plates': plates, 'layout': [[n, dt, int(np.asarray(a).size)] for n, dt, a in fields],
+       'gz': base64.b64encode(gzip.compress(blob, 9, mtime=0)).decode()}
 dst = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'earth.js')
 os.makedirs(os.path.dirname(dst), exist_ok=True)
 with open(dst, 'w') as f:
-    f.write('/* 実在の地球の観測・解析データ(2°グリッド)。tools/build_earth_data.py が生成。出典は data/SOURCES.md */\n')
-    f.write('window.EARTH_DATA = ' + json.dumps(out, ensure_ascii=False, separators=(',', ':')) + ';\n')
-print('書き出し', os.path.getsize(dst), 'bytes')
+    f.write('/* 実在の地球の観測・解析データ(1°グリッド、gzip圧縮)。tools/build_earth_data.py が生成。出典は data/SOURCES.md */\n')
+    f.write('(typeof window !== "undefined" ? window : globalThis).EARTH_DATA = ' + json.dumps(out, ensure_ascii=False, separators=(',', ':')) + ';\n')
+print('書き出し', os.path.getsize(dst), 'bytes (展開後', len(blob), 'bytes)')
 
 # ---------- 検算: 実在都市の値 ----------
 def cell(la_, lo_):
-    y = int(round((89 - la_) / 2)); x = int(round((lo_ + 179) / 2)) % W
+    y = int(round(89.5 - la_)); x = int(round(lo_ + 179.5)) % W
     if not land[y, x]:
         best = None
         for dy in range(-1, 2):
