@@ -61,15 +61,16 @@
     5: { name: '農牧業に不適', sub: '氷雪・水域など', color: '#dfe3e6' }
   };
   const AGRI_ORDER = [1, 2, 3, 4, 5];
-  // 農業区分(自作): js/climate.js の farmType の規則で、作物・家畜・灌漑・気候のデータから判定したもの
+  // 農業地域区分。whit: ホイットルセー(1936)の区分図から読み取ったもの / farm: 現在のデータに規則をあてはめた自作の区分(js/climate.js の farmType)
   const FARM = {
-    nomad: { name: '遊牧', color: '#e8c98a' }, ranch: { name: '企業的牧畜', color: '#d98e4a' }, oasis: { name: 'オアシス農業(灌漑農業)', color: '#2f8fb0' },
-    shifting: { name: '焼畑農業・粗放的定住農業', color: '#b9a24a' }, rice: { name: '集約的稲作農業(アジア式稲作)', color: '#3f9f6a' }, upland: { name: '集約的畑作農業(アジア式畑作)', color: '#9ccf6c' },
-    plantation: { name: 'プランテーション農業', color: '#c0436f' }, medit: { name: '地中海式農業', color: '#f2d43a' }, grain: { name: '企業的穀物農業', color: '#8a4b2a' },
-    mixed: { name: '混合農業', color: '#7a6fd0' }, dairy: { name: '酪農', color: '#6fb8e0' }, horti: { name: '園芸農業', color: '#e06a8c' }, none: { name: '非農業地域(農牧業はほぼなし)', color: '#dfe3e6' }
+    nomad: { name: '遊牧', color: '#f3e06a' }, ranch: { name: '企業的牧畜', color: '#f0b8d8' }, shifting: { name: '焼畑農業', color: '#b96a1e' }, sedentary: { name: '粗放的定住農業', color: '#9a55d8' },
+    rice: { name: '集約的稲作農業(アジア式稲作)', color: '#2f9a3a' }, upland: { name: '集約的畑作農業(アジア式畑作)', color: '#8fd8b0' }, plantation: { name: 'プランテーション農業', color: '#e0405a' },
+    medit: { name: '地中海式農業', color: '#f09a3a' }, grain: { name: '企業的穀物農業', color: '#e8b890' }, mixed: { name: '混合農業(商業的)', color: '#8fd060' }, substock: { name: '自給的混合農業', color: '#9ab020' },
+    dairy: { name: '酪農', color: '#3fb8e8' }, horti: { name: '園芸農業', color: '#e040b8' }, oasis: { name: 'オアシス農業(灌漑農業)', color: '#2a50c0' }, none: { name: '非農業地域(農牧業はほぼなし)', color: '#b8bcc0' }
   };
-  const FARM_ORDER = ['nomad', 'ranch', 'oasis', 'shifting', 'rice', 'upland', 'plantation', 'medit', 'grain', 'mixed', 'dairy', 'horti', 'none'];
-  const FARM_NEAR = [['nomad', 'ranch'], ['rice', 'upland'], ['mixed', 'dairy'], ['mixed', 'horti'], ['dairy', 'horti'], ['shifting', 'plantation'], ['grain', 'mixed'], ['nomad', 'none']]; // 近い型(半分の点)
+  const WHIT_ORDER = ['nomad', 'ranch', 'shifting', 'sedentary', 'rice', 'upland', 'plantation', 'medit', 'grain', 'mixed', 'substock', 'dairy', 'horti', 'none'];           // 区分図の14区分
+  const FARM_ORDER = ['nomad', 'ranch', 'oasis', 'shifting', 'rice', 'upland', 'plantation', 'medit', 'grain', 'mixed', 'dairy', 'horti', 'none'];                      // 自作の13区分
+  const FARM_NEAR = [['nomad', 'ranch'], ['rice', 'upland'], ['mixed', 'dairy'], ['mixed', 'horti'], ['dairy', 'horti'], ['shifting', 'plantation'], ['grain', 'mixed'], ['shifting', 'sedentary'], ['mixed', 'substock'], ['sedentary', 'substock']]; // 近い型(半分の点)
   // 標高の区分(白地図クイズ用)
   const ELEV = ['0〜50m', '50〜500m', '500〜1000m', '1000〜2000m', '2000m〜'];
   const elevClass = e => e < 50 ? 0 : e < 500 ? 1 : e < 1000 ? 2 : e < 2000 ? 3 : 4;
@@ -99,6 +100,6 @@
     ET: 'ツンドラ土: 低温で分解が進まない強酸性の土壌。地下は永久凍土。', EF: '氷雪に覆われ土壌は発達しない。', H: '標高により変化する(高山土)。'
   };
 
-  const API = { KOPPEN, KOPPEN_ORDER, VEG, VEG_ORDER, CROPS, STOCK, STOCK_MIN, LAND, landClass, ELEV, elevClass, AGRI, AGRI_ORDER, FARM, FARM_ORDER, FARM_NEAR, AGRI_NOTE, SOIL_NOTE };
+  const API = { KOPPEN, KOPPEN_ORDER, VEG, VEG_ORDER, CROPS, STOCK, STOCK_MIN, LAND, landClass, ELEV, elevClass, AGRI, AGRI_ORDER, FARM, FARM_ORDER, WHIT_ORDER, FARM_NEAR, AGRI_NOTE, SOIL_NOTE };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.Geo = API;
 })(typeof window !== 'undefined' ? window : globalThis);

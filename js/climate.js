@@ -96,7 +96,7 @@
     const land = new Uint8Array(N); for (let i = 0; i < N; i++) land[i] = world.elev[i] > 0 ? 1 : 0;
     const D = { land, T: [], P: [], wu: [], wv: [], tAnn: new Float32Array(N), pAnn: new Float32Array(N), kop: new Array(N), veg: E.veg, veg2: E.veg2, agri: E.lps, agri2: E.lps2,
       cu: new Float32Array(N), cv: new Float32Array(N), sstA: new Float32Array(N), ckind: new Int8Array(N), coastD: Core.distField(land.map(v => 1 - v)),
-      crop: [], stock: [], farm: new Array(N).fill(null), irr: E.irr, cropAll: new Float32Array(N), cropNames: E.cropNames, stockNames: E.stockNames };
+      crop: [], stock: [], farm: new Array(N).fill(null), whit: new Array(N).fill(null), irr: E.irr, cropAll: new Float32Array(N), cropNames: E.cropNames, stockNames: E.stockNames };
     for (let m = 0; m < 12; m++) {
       const t = new Float32Array(N), p = new Float32Array(N), u = new Float32Array(N), v = new Float32Array(N);
       for (let i = 0; i < N; i++) { t[i] = E.T[m * N + i] / 10; p[i] = E.P[m * N + i]; u[i] = E.wu[m * N + i] / 10; v[i] = E.wv[m * N + i] / 10; } // ℃, mm, m/s
@@ -111,6 +111,7 @@
       const k = koppen(t, p, lat, world.elev[i]);
       D.tAnn[i] = k.tAvg; D.pAnn[i] = k.R; D.kop[i] = land[i] ? k.code : null;
       D.cu[i] = E.cu[i] / 200; D.cv[i] = E.cv[i] / 200; D.sstA[i] = E.sstA[i] / 10; // m/s, ℃
+      if (land[i] && E.whit[i]) D.whit[i] = E.whitNames[E.whit[i] - 1]; // ホイットルセーの区分図から読み取った農業地域区分
       if (land[i]) { // 農業区分(自作の規則)
         const crop = {}; E.cropNames.forEach((n, j) => { crop[n] = D.crop[j][i]; });
         D.farm[i] = farmType({ kop: k.code, lat, lon: Core.lonOf(i % W), total: D.cropAll[i], crop, cattle: D.stock[0][i], sheep: D.stock[1][i], goats: D.stock[2][i], pigs: D.stock[3][i], irr: E.irr[i] / 255, lps: E.lps[i] });

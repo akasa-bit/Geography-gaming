@@ -66,7 +66,7 @@
   function b64bytes(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
   // data/earth.js(gzip圧縮)を展開して型付き配列にする。ブラウザでは Promise、Node では同期で使える unpackEarth を使う
   function unpackEarth(D, raw) {
-    const E = { plates: D.plates, cropNames: D.crops, stockNames: D.stock }, T = { i1: Int8Array, u1: Uint8Array, i2: Int16Array, u2: Uint16Array };
+    const E = { plates: D.plates, cropNames: D.crops, stockNames: D.stock, whitNames: D.whit }, T = { i1: Int8Array, u1: Uint8Array, i2: Int16Array, u2: Uint16Array };
     let off = 0;
     for (const [name, dt, len] of D.layout) { const bytes = len * T[dt].BYTES_PER_ELEMENT; E[name] = new T[dt](raw.buffer.slice(raw.byteOffset + off, raw.byteOffset + off + bytes)); off += bytes; }
     return E;

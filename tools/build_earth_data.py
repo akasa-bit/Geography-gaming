@@ -5,7 +5,7 @@
 必要なファイル(入手先は data/SOURCES.md):
   etopo2022.txt  udel_air.nc  udel_precip.nc  oisst.nc  air2m.nc  gpcp.nc
   uwnd.nc  vwnd.nc  ucur.txt  vcur.txt  pb_plates.txt  pb_poles.txt
-  potveg.asc.gz  lps/glps_gleam_61113_10km.tif  spam/spam.zip  gaez/Olives.tif gaez/Foddercrops.tif  cattle.tif sheep.tif goats.tif pigs.tif  gprv.shp/.dbf/.shx
+  whittlesey.jpg  potveg.asc.gz  lps/glps_gleam_61113_10km.tif  spam/spam.zip  gaez/Olives.tif gaez/Foddercrops.tif  cattle.tif sheep.tif goats.tif pigs.tif  gprv.shp/.dbf/.shx
 """
 import base64, gzip, json, math, os, re, sys
 import numpy as np
@@ -289,6 +289,97 @@ for y in range(H):
         if c[o[1]] >= 0.25 * len(v): lps2[y, x] = o[1]
 print('農業形態(陸セル) なし/放牧/天水混合/灌漑混合/森林など/不適地', np.bincount(lps[land].ravel(), minlength=6).tolist())
 
+# ---------- 農業地域区分: ホイットルセー(1936)の区分図の画像を読み取る ----------
+# 画像はロビンソン図法(縦に引き伸ばし)。陸海の形が ETOPO と最もよく重なるように位置合わせしてから、色を区分に直す
+from PIL import Image
+wim = np.array(Image.open(R + 'whittlesey.jpg').convert('RGB')).astype(int); WIH, WIW = wim.shape[:2]
+WPAL = {'ocean': (12, 156, 252), 'white': (255, 255, 255), 'water': (204, 252, 252), 'border': (140, 90, 160),
+        'nomad': (252, 252, 60), 'ranch': (252, 204, 252), 'shifting': (204, 108, 12), 'sedentary': (160, 64, 252), 'rice': (60, 204, 12), 'upland': (156, 252, 204),
+        'plantation': (252, 60, 100), 'medit': (252, 156, 60), 'grain': (252, 204, 156), 'mixed': (156, 252, 108), 'substock': (156, 204, 12), 'dairy': (12, 204, 252),
+        'horti': (252, 60, 204), 'none': (156, 156, 156)}
+WN = list(WPAL); WP = np.array([WPAL[n] for n in WN])
+wcls = ((wim.reshape(-1, 1, 3) - WP) ** 2).sum(-1).argmin(-1).reshape(WIH, WIW)
+wland = ~np.isin(wcls, [0, 1, 3])
+RLT = np.arange(0, 91, 5)
+RX = np.array([1, .9986, .9954, .99, .9822, .973, .96, .9427, .9216, .8962, .8679, .835, .7986, .7597, .7186, .6732, .6213, .5722, .5322])
+RY = np.array([0, .0620, .1240, .1860, .2480, .3100, .3720, .4340, .4958, .5571, .6176, .6769, .7346, .7903, .8435, .8936, .9394, .9761, 1])
+WLA, WLO = np.meshgrid(LAT, LON, indexing='ij')
+def wproj(q):
+    dl = ((WLO - q[4] + 180) % 360) - 180
+    return q[0] + q[1] * np.interp(np.abs(WLA), RLT, RX) * dl / 180, q[2] - q[3] * np.interp(np.abs(WLA), RLT, RY) * np.sign(WLA)
+def wscore(q):
+    x, y = wproj(q); xi = np.round(x).astype(int); yi = np.round(y).astype(int)
+    ok = (xi >= 0) & (xi < WIW) & (yi >= 0) & (yi < WIH) & (np.abs(WLA) < 72)
+    a = np.zeros_like(land); a[ok] = wland[yi[ok], xi[ok]]
+    return ((a == land) & ok).sum() / ok.sum()
+sc = WIW / 2000.0
+q = np.array([1000 * sc, 935 * sc, 590 * sc, 591 * sc, 10.0]); best = wscore(q); step = np.array([20, 20, 20, 20, 4.0])
+while step[0] >= 0.25:
+    moved = False
+    for k in range(5):
+        for sg in (1, -1):
+            t = q.copy(); t[k] += sg * step[k]; v = wscore(t)
+            if v > best: best, q, moved = v, t, True
+    if not moved: step /= 2
+print('農業地域区分図の位置合わせ: 陸海の一致率', round(float(best), 4), 'パラメータ', np.round(q, 1).tolist())
+wx, wy = wproj(q)
+# 図法が完全なロビンソン図法ではないので、地域ごと(経度20°×緯度15°)に陸海の形が最もよく合うずれを求めて補正する
+tla = np.arange(-52.5, 83, 15); tlo = np.arange(-170, 181, 20)
+sdx = np.full((len(tla), len(tlo)), np.nan); sdy = sdx.copy()
+for a_, la0 in enumerate(tla):
+    for b_, lo0 in enumerate(tlo):
+        dlo = ((WLO - lo0 + 180) % 360) - 180
+        m = (np.abs(WLA - la0) <= 15) & (np.abs(dlo) <= 20)
+        lm = land[m]
+        if lm.sum() < 40 or (~lm).sum() < 40: continue          # 海岸線がないと合わせられない
+        bx, by, bv = 0, 0, -1
+        for dy in range(-14, 15, 2):
+            for dx in range(-14, 15, 2):
+                xi = np.clip(np.round(wx[m] + dx).astype(int), 0, WIW - 1); yi = np.clip(np.round(wy[m] + dy).astype(int), 0, WIH - 1)
+                v = (wland[yi, xi] == lm).mean() - 0.0004 * (dx * dx + dy * dy) ** 0.5
+                if v > bv: bx, by, bv = dx, dy, v
+        sdx[a_, b_] = bx; sdy[a_, b_] = by
+def fill_smooth(g):
+    g = g.copy()
+    for _ in range(8):   # 求められなかった所は周りの平均で埋める
+        nanm = np.isnan(g)
+        if not nanm.any(): break
+        pad = np.pad(g, 1, mode='edge'); stack = np.stack([pad[1:-1, :-2], pad[1:-1, 2:], pad[:-2, 1:-1], pad[2:, 1:-1]])
+        with np.errstate(invalid='ignore'):
+            import warnings; warnings.simplefilter('ignore'); mean = np.nanmean(stack, axis=0)
+        g[nanm] = mean[nanm]
+    g = np.nan_to_num(g)
+    pad = np.pad(g, 1, mode='edge')
+    return (pad[1:-1, 1:-1] * 2 + pad[1:-1, :-2] + pad[1:-1, 2:] + pad[:-2, 1:-1] + pad[2:, 1:-1]) / 6
+sdx = fill_smooth(sdx); sdy = fill_smooth(sdy)
+def interp_shift(g):
+    fa = np.clip((WLA - tla[0]) / 15, 0, len(tla) - 1); fb = np.clip((WLO - tlo[0]) / 20, 0, len(tlo) - 1)
+    a0 = np.floor(fa).astype(int); b0 = np.floor(fb).astype(int); a1 = np.minimum(a0 + 1, len(tla) - 1); b1 = np.minimum(b0 + 1, len(tlo) - 1)
+    ta = fa - a0; tb = fb - b0
+    return (g[a0, b0] * (1 - tb) + g[a0, b1] * tb) * (1 - ta) + (g[a1, b0] * (1 - tb) + g[a1, b1] * tb) * ta
+wx = wx + interp_shift(sdx); wy = wy + interp_shift(sdy)
+wxi = np.clip(np.round(wx).astype(int), 0, WIW - 1); wyi = np.clip(np.round(wy).astype(int), 0, WIH - 1)
+okm = np.abs(WLA) < 72
+print('地域ごとの補正後: 陸海の一致率', round(float((wland[wyi, wxi] == land)[okm].mean()), 4), '補正量(px)の最大', round(float(np.abs(sdx).max()), 1), round(float(np.abs(sdy).max()), 1))
+# 境界や海岸のにじんだ色は使わない(凡例色に十分近いピクセルだけ数える)
+wdist = ((wim.reshape(-1, 1, 3) - WP) ** 2).sum(-1).min(-1).reshape(WIH, WIW)
+wpure = np.where(wdist <= 1800, wcls, 0)
+whit = np.zeros((H, W), dtype=np.uint8)   # 0=読み取れず, 1..14 = WN[4:] の順
+for y in range(H):
+    for x in range(W):
+        if not land[y, x] or abs(LAT[y]) > 80: continue
+        v = wpure[max(0, wyi[y, x] - 3):wyi[y, x] + 4, max(0, wxi[y, x] - 3):wxi[y, x] + 4].ravel()
+        c = np.bincount(v, minlength=len(WN)); c[:4] = 0
+        if c.sum() >= 6: whit[y, x] = c.argmax() - 3
+direct = int((whit > 0).sum())
+for _ in range(8):   # 海岸や島で読み取れなかった陸セルは、隣(上下左右)の読み取れたセルから埋める
+    src = whit.copy()
+    for y, x in zip(*np.where(land & (src == 0) & (np.abs(LAT)[:, None] <= 80))):
+        nb = [src[y, (x + 1) % W], src[y, (x - 1) % W], src[max(y - 1, 0), x], src[min(y + 1, H - 1), x]]
+        nb = [v for v in nb if v]
+        if nb: whit[y, x] = max(set(nb), key=nb.count)
+print('農業地域区分: 直接読み取れた陸セル', direct, '隣から埋めた後', int((whit > 0).sum()), '/', int(land.sum()), '区分別', np.bincount(whit[land].ravel(), minlength=15).tolist())
+
 # ---------- 大地形: Hasterok et al. (2022) Global geologic provinces ----------
 # 最後の造山運動(lastorogen)を高校地理の3区分に対応させる。1=新期造山帯 2=古期造山帯 0=安定陸塊(その他の大陸地殻)・海洋
 NEW = {'Cordilleran', 'Alpine-Himalayan', 'Antilles'}
@@ -323,7 +414,7 @@ fields = [
     ('wu', 'i1', np.clip(np.round(wu * 10), -127, 127)), ('wv', 'i1', np.clip(np.round(wv * 10), -127, 127)),       # 0.1 m/s
     ('cu', 'i1', np.clip(np.round(cu * 200), -127, 127)), ('cv', 'i1', np.clip(np.round(cv * 200), -127, 127)),     # 0.5 cm/s
     ('sstA', 'i1', np.clip(np.round(sst_anom * 10), -127, 127)),     # 0.1 ℃
-    ('veg', 'u1', veg), ('veg2', 'u1', veg2), ('oro', 'u1', oro), ('lps', 'u1', lps), ('lps2', 'u1', lps2),
+    ('veg', 'u1', veg), ('veg2', 'u1', veg2), ('oro', 'u1', oro), ('lps', 'u1', lps), ('lps2', 'u1', lps2), ('whit', 'u1', whit),
     ('crop', 'u1', np.clip(np.round(np.sqrt(crop_frac) * 255), 0, 255)),      # 割合 = (値/255)², [作物][y][x]
     ('irr', 'u1', np.clip(np.round(irr * 255), 0, 255)),                      # 灌漑の割合 = 値/255
     ('cropAll', 'u1', np.clip(np.round(np.sqrt(crop_all) * 180), 0, 255)),    # 収穫面積の合計の割合 = (値/180)²
@@ -331,7 +422,7 @@ fields = [
 ]
 NP = {'i1': 'i1', 'u1': 'u1', 'i2': '<i2', 'u2': '<u2'}
 blob = b''.join(np.ascontiguousarray(a, dtype=NP[dt]).tobytes() for _, dt, a in fields)
-out = {'W': W, 'H': H, 'plates': plates, 'crops': CROPS, 'stock': STOCK, 'layout': [[n, dt, int(np.asarray(a).size)] for n, dt, a in fields],
+out = {'W': W, 'H': H, 'plates': plates, 'crops': CROPS, 'stock': STOCK, 'whit': WN[4:], 'layout': [[n, dt, int(np.asarray(a).size)] for n, dt, a in fields],
        'gz': base64.b64encode(gzip.compress(blob, 9, mtime=0)).decode()}
 dst = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'earth.js')
 os.makedirs(os.path.dirname(dst), exist_ok=True)
