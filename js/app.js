@@ -461,7 +461,7 @@
     let r = Math.random() * wts.reduce((a, b) => a + b, 0), t = types[0];
     for (let j = 0; j < types.length; j++) { r -= wts[j]; if (r <= 0) { t = types[j]; break; } }
     const cells = by[t], i = cells[Math.floor(Math.random() * cells.length)];
-    S.quiz = { i, pd: pointData(i), ans: { kop: null, veg: null, soil: null, agri: null, crops: [] }, done: false };
+    S.quiz = { i, pd: pointData(i), ans: { kop: null, veg: null, soil: null, agri: [], crops: [] }, done: false };
     if (!layerAllowed(S.layer)) S.layer = 'terrain';
     renderQuiz(); buildLayerChips(); refresh();
   }
@@ -487,14 +487,13 @@
     const head = el('div', { class: 'block' }, `<p class="lead">赤い印の地点${showLoc ? '' : '(地図には非表示)'}の気候です。グラフを読み取り、気候区分・植生・土壌・農業を答えましょう。</p>${chartsHTML(true, pd)}${factsHTML(pd, showLoc)}`);
     body.appendChild(head);
     const mk = (title, pts, node, hint) => { const d = el('div', { class: 'q' }, `<h3>${title}<span>${pts}点</span></h3>${hint ? `<p class="hint">${hint}</p>` : ''}`); d.appendChild(node); body.appendChild(d); };
+    const toggle = (c, k) => { const j = c.indexOf(k); if (j >= 0) c.splice(j, 1); else { if (c.length >= 3) c.shift(); c.push(k); } };
     const rerender = () => { const y = window.scrollY; renderQuiz(); window.scrollTo(0, y); };
     mk('気候区分', PTS.kop, chipGroup('qKop', G.KOPPEN_ORDER.map(k => [k, `<span class="code">${k}</span>${G.KOPPEN[k].name.replace(/\(.*\)/, '')}`]), q.ans.kop, false, k => { q.ans.kop = k; rerender(); }));
     mk('植生', PTS.veg, chipGroup('qVeg', G.VEG_ORDER.map(k => [k, G.VEG[k].name]), q.ans.veg, false, k => { q.ans.veg = k; rerender(); }));
     mk('土壌', PTS.soil, chipGroup('qSoil', G.SOIL_ORDER.map(k => [k, G.SOIL[k]]), q.ans.soil, false, k => { q.ans.soil = k; rerender(); }));
-    mk('農業形態', PTS.agri, chipGroup('qAgri', G.AGRI_ORDER.map(k => [k, G.AGRI[k]]), q.ans.agri, false, k => { q.ans.agri = k; rerender(); }), 'この気候で代表的なものを1つ。');
-    mk('作物・家畜', PTS.crops, chipGroup('qCrops', G.CROP_ORDER.map(k => [k, G.CROPS[k]]), q.ans.crops, true, k => {
-      const c = q.ans.crops, j = c.indexOf(k); if (j >= 0) c.splice(j, 1); else { if (c.length >= 3) c.shift(); c.push(k); } rerender();
-    }), 'この気候で代表的なものを1〜3つ。');
+    mk('農業形態', PTS.agri, chipGroup('qAgri', G.AGRI_ORDER.map(k => [k, G.AGRI[k]]), q.ans.agri, true, k => { toggle(q.ans.agri, k); rerender(); }), 'この気候で代表的なものを1〜3つ。選んだものの平均で採点します。');
+    mk('作物・家畜', PTS.crops, chipGroup('qCrops', G.CROP_ORDER.map(k => [k, G.CROPS[k]]), q.ans.crops, true, k => { toggle(q.ans.crops, k); rerender(); }), 'この気候で代表的なものを1〜3つ。選んだものの平均で採点します。');
     const row = el('div', { class: 'row' });
     const sub = el('button', { type: 'button', class: 'btn primary', id: 'submitQuiz' }, '採点する'); sub.disabled = !q.ans.kop;
     sub.onclick = grade;
@@ -510,7 +509,7 @@
     const vegFull = [pd.veg], vegPart = M.veg[0].concat(M.veg[1]).filter(v => v !== pd.veg);
     res.veg = judge(a.veg, vegFull, vegPart);
     res.soil = judge(a.soil, M.soil[0], M.soil[1]);
-    res.agri = judge(a.agri, M.agri[0], M.agri[1]);
+    res.agri = a.agri.length ? a.agri.reduce((s, c) => s + judge(c, M.agri[0], M.agri[1]), 0) / a.agri.length : 0;
     res.crops = a.crops.length ? a.crops.reduce((s, c) => s + judge(c, M.crops[0], M.crops[1]), 0) / a.crops.length : 0;
     let total = 0; for (const k in PTS) total += PTS[k] * res[k];
     q.res = res; q.total = Math.round(total); q.vegFull = vegFull; q.vegPart = vegPart; q.done = true;
@@ -531,7 +530,7 @@
       ${line('気候区分', 'kop', a.kop ? `${a.kop} ${G.KOPPEN[a.kop].name}` : '', `${code} ${K.name}`)}
       ${line('植生', 'veg', a.veg ? G.VEG[a.veg].name : '', `${G.VEG[pd.veg].name}(${G.VEG[pd.veg].sub})`)}
       ${line('土壌', 'soil', a.soil ? G.SOIL[a.soil] : '', names(M.soil[0], G.SOIL))}
-      ${line('農業形態', 'agri', a.agri ? G.AGRI[a.agri] : '', names(M.agri[0], G.AGRI))}
+      ${line('農業形態', 'agri', names(a.agri, G.AGRI), names(M.agri[0], G.AGRI))}
       ${line('作物・家畜', 'crops', names(a.crops, G.CROPS), names(M.crops[0], G.CROPS))}
       ${chartsHTML(false, pd)}${factsHTML(pd, true)}
       <h3>判定の手順</h3>${koppenSteps(pd)}
