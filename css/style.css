@@ -70,7 +70,6 @@ select { background: var(--surface); border: 1px solid var(--line); border-radiu
 
 .mapwrap { border: 1px solid var(--ink); background: var(--sunken); line-height: 0; }
 #map { display: block; width: 100%; height: auto; touch-action: pan-y; cursor: crosshair; }
-#map.paint { touch-action: none; }
 .readout { font-family: var(--font-data); font-size: 0.8rem; color: var(--ink-2); min-height: 2.6em; overflow-wrap: anywhere; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.8rem; color: var(--ink-2); }
 .legend .item { display: inline-flex; align-items: center; gap: 5px; }
@@ -99,9 +98,11 @@ select { background: var(--surface); border: 1px solid var(--line); border-radiu
 .slider output { font-family: var(--font-data); min-width: 2ch; text-align: right; }
 
 .plates { display: flex; flex-direction: column; gap: 6px; }
-.plate { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 6px 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.plate { display: grid; grid-template-columns: auto minmax(0, 1fr) 5.5em 6em; gap: 6px 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
 .plate[aria-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
-.plate .pick { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--ink); cursor: pointer; padding: 0; }
+.plate .pick { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--ink); }
+.plate .pdir { font-family: var(--font-data); font-size: 0.8rem; color: var(--ink-2); white-space: nowrap; }
+.points { padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; font-size: 0.88rem; }
 .plate .pname { font-size: 0.86rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plate select { font-size: 0.82rem; max-width: 100%; }
 

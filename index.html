@@ -16,7 +16,7 @@
   <header class="top">
     <div class="brand">
       <h1>自然地理シミュレーター</h1>
-      <p class="world-name" id="worldName"></p>
+      <p class="world-name">実在の地球の観測データで学ぶ(1°格子)</p>
     </div>
     <nav class="steps" aria-label="手順">
       <button type="button" class="step" data-mode="terrain" id="stepTerrain"><span class="step-n">1</span>地形・プレート</button>
@@ -51,41 +51,31 @@
     <aside class="panel">
       <!-- 1. 地形・プレート -->
       <div id="panelTerrain" class="pane">
-        <h2>地形とプレートをつくる</h2>
-        <p class="lead">「地球(実データ)」は観測データをそのまま使います。地形を描き変えると自作の惑星になり、気候はシミュレーションで計算します。自動生成では、マントル対流 → プレートの動き → 大地形の順に決まります。上昇流の上に広がる境界(海嶺)、下降流の上に狭まる境界(海溝・新期造山帯)ができます。ブラシで自分で描くこともできます。</p>
+        <h2>地形とプレートを見る</h2>
+        <p class="lead">実在の地球のデータです。地図の種類を切り替えて、地形・大地形(安定陸塊と造山帯)・プレート境界・マントルの流れの関係を確かめましょう。</p>
         <div class="group">
-          <h3>ひな形</h3>
-          <div class="row">
-            <button type="button" class="btn" id="preEarth">地球(実データ)</button>
-            <button type="button" class="btn" id="preRandom">マントル対流から自動生成</button>
-            <button type="button" class="btn" id="preBlank">海だけの惑星</button>
-          </div>
+          <h3>読み取りのポイント</h3>
+          <ul class="points">
+            <li><b>狭まる境界</b>(赤): 海溝・弧状列島・新期造山帯ができる。環太平洋とアルプス=ヒマラヤの2本の帯。</li>
+            <li><b>広がる境界</b>(青): 海嶺・地溝帯。大西洋中央海嶺、アフリカ大地溝帯など。</li>
+            <li><b>ずれる境界</b>(黄): 横ずれ断層。サンアンドレアス断層など。</li>
+            <li><b>古期造山帯</b>はプレート境界から離れた低くなだらかな山地、<b>安定陸塊</b>は楯状地・卓状地。</li>
+          </ul>
         </div>
         <div class="group">
-          <h3>ブラシ</h3>
-          <div class="chips" id="toolChips" role="group" aria-label="ブラシの種類"></div>
-          <label class="slider">太さ <input type="range" id="brushSize" min="1" max="16" value="4"><output id="brushSizeOut">4</output></label>
-          <div class="row"><button type="button" class="btn ghost" id="undoBtn">ひとつ戻す</button></div>
-        </div>
-        <div class="group">
-          <h3>プレート</h3>
-          <p class="hint">「自動で決める」は、いまの地形を残したままマントル対流を作り、プレートの範囲・向き・速さを割り当てます。手で塗ったり向きを変えたりもできます。そのあと「造山運動を進める」で境界に合った地形ができます。</p>
-          <div class="row"><button type="button" class="btn" id="autoPlates">マントルとプレートを自動で決める</button></div>
+          <h3>プレートと動き</h3>
           <div id="plateList" class="plates"></div>
-          <div class="row">
-            <button type="button" class="btn ghost" id="addPlate">プレートを追加</button>
-            <button type="button" class="btn" id="orogenyBtn">造山運動を進める</button>
-          </div>
+          <p class="hint">向きと速さはプレート全体の平均。出典: Bird (2003) PB2002。マントルの流れはプレート境界からの推定です。</p>
         </div>
-        <button type="button" class="btn primary wide" id="runClimate">この地形で気候をシミュレーションする</button>
+        <button type="button" class="btn primary wide" id="runClimate">気候を読む</button>
       </div>
 
       <!-- 2. 気候 -->
       <div id="panelClimate" class="pane" hidden>
         <h2>気候を読む</h2>
-        <p class="lead">地図をタップすると、その地点の雨温図とハイサーグラフ、気候区分の判定手順が出ます。地図の種類を切り替えて、気候因子との関係を確かめましょう。</p>
+        <p class="lead">地図をタップすると、その地点の雨温図とハイサーグラフ、気候区分の判定手順が出ます。地図の種類を切り替え、海流や風を重ねて、気候因子との関係を確かめましょう。</p>
         <div id="inspect"></div>
-        <details class="model" id="realNote" hidden>
+        <details class="model" id="realNote">
           <summary>このデータの出典(実在の地球)</summary>
           <ul>
             <li><b>標高・水深</b>: NOAA NCEI ETOPO 2022(氷床表面)</li>
@@ -97,18 +87,6 @@
             <li><b>プレート</b>: Bird (2003) PB2002。高校地理の主要プレートにまとめて表示</li>
           </ul>
           <p class="hint">値は1°×1°(約100km四方)の平均なので、都市の観測値とは少しずれます(山がちな所は標高が平均され、気温が低めに出ます)。南極・グリーンランド内陸の気温はNCEP/NCAR再解析、降水はGPCPで補っています。ケッペン・植生の地図はこの気温・降水量から判定したもので、大地形の区分は教科書の造山帯の位置を手で指定しています。</p>
-        </details>
-        <details class="model" id="modelNote">
-          <summary>このシミュレーションの考え方</summary>
-          <ul>
-            <li><b>緯度</b>: 太陽高度で年平均気温が決まる。</li>
-            <li><b>気圧帯の季節移動</b>: 熱帯収束帯・亜熱帯高圧帯・亜寒帯低圧帯が夏半球側へ動き、雨季と乾季をつくる。</li>
-            <li><b>隔海度</b>: 風上の海から遠いほど年較差が大きく、雨が少ない。</li>
-            <li><b>海流</b>: 大洋西岸の暖流は湿潤、東岸の寒流は海岸砂漠をつくる。高緯度の大陸西岸は暖流と偏西風で温和。</li>
-            <li><b>季節風</b>: 大きな大陸の東〜南岸で、夏は海から湿った風、冬は大陸から乾いた寒風。</li>
-            <li><b>地形</b>: 気温は100mにつき0.65℃下がる。山脈の風上は多雨、風下は雨陰で乾燥。</li>
-          </ul>
-          <p class="hint">高校地理の気候因子を数式にした簡略モデルです。実際の地球と細部は一致しません。</p>
         </details>
         <button type="button" class="btn primary wide" id="toQuiz">クイズを始める</button>
       </div>
@@ -127,7 +105,7 @@
       </div>
     </aside>
   </main>
-  <footer class="foot">地球(実データ)は NOAA・デラウェア大学・GPCP・Bird (2003) のデータを1°格子に集計。自作・自動生成の惑星は高校地理の気候因子にもとづく簡略モデル。ケッペンの区分は教科書の判定法(乾燥限界 r=20(t+x))。</footer>
+  <footer class="foot">NOAA・デラウェア大学・GPCP・Bird (2003) のデータを1°格子に集計。ケッペンの区分は教科書の判定法(乾燥限界 r=20(t+x))で判定。</footer>
 </div>
 
 <script src="data/earth.js"></script>
