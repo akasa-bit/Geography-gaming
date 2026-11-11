@@ -1,8 +1,8 @@
 /* クイズの解答記録と傾向分析(記録はこのブラウザの localStorage に保存) */
 (function (root) {
   'use strict';
-  const G = root.Geo, KEY = 'geo-quiz-log', BLOCK = 50, MAX = 2000;
-  const ITEMS = [['kop', '気候区分'], ['veg', '植生'], ['soil', '土壌'], ['agri', '農業形態'], ['crops', '作物・家畜']];
+  const G = root.Geo, KEY = 'geo-quiz-log-v2', BLOCK = 50, MAX = 2000;
+  const ITEMS = [['kop', '気候区分'], ['veg', '植生'], ['land', '耕地の広がり'], ['crops', '作物・家畜']];
   let log = null;
   function all() {
     if (!log) { try { log = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { log = []; } if (!Array.isArray(log)) log = []; }
@@ -43,9 +43,10 @@
       A.avg += e.total / es.length;
       for (const [k] of ITEMS) {
         A.item[k] += e.r[k] / es.length;
-        const w = A.weak[k][e.code] = A.weak[k][e.code] || { n: 0, s: 0, wrong: {} }; w.n++; w.s += e.r[k];
+        const w = A.weak[k][e.code] = A.weak[k][e.code] || { n: 0, s: 0, wrong: {}, right: {} }; w.n++; w.s += e.r[k];
+        if (k !== 'kop' && e.c && e.c[k]) w.right[e.c[k]] = (w.right[e.c[k]] || 0) + 1;
         if (k !== 'kop') {
-          const picks = Array.isArray(e.a[k]) ? e.a[k] : (e.a[k] ? [e.a[k]] : []);
+          const picks = Array.isArray(e.a[k]) ? e.a[k] : (e.a[k] != null ? [e.a[k]] : []);
           if (!picks.length) w.wrong['(未回答)'] = (w.wrong['(未回答)'] || 0) + 1;
           else if (e.r[k] < 1) for (const p of picks) if (!(e.ok && e.ok[k] && e.ok[k].includes(p))) w.wrong[p] = (w.wrong[p] || 0) + 1;
         }
@@ -64,14 +65,8 @@
   /* ---- 表示 ---- */
   const pct = v => Math.round(v * 100);
   const bar = (v, cls) => `<span class="rbar"><i class="${cls || ''}" style="width:${Math.max(2, pct(v))}%"></i></span>`;
-  const nameOf = (k, key) => key === '(未回答)' ? key : k === 'veg' ? G.VEG[key].name : k === 'soil' ? G.SOIL[key] : k === 'agri' ? G.AGRI[key] : G.CROPS[key];
-  function correctOf(k, code) {
-    const M = G.MATCH[code];
-    if (k === 'veg') return M.veg[0].map(v => G.VEG[v].name).join('・');
-    if (k === 'soil') return M.soil[0].map(v => G.SOIL[v]).join('・');
-    if (k === 'agri') return M.agri[0].map(v => G.AGRI[v]).join('・');
-    return M.crops[0].map(v => G.CROPS[v]).join('・');
-  }
+  const nameOf = (k, key) => key === '(未回答)' ? key : k === 'veg' ? G.VEG[key].name : k === 'land' ? G.LAND[key] : key === 'none' ? '該当なし' : G.CROPS[key] || G.STOCK[key];
+  const topOf = o => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([n, c]) => `${n}(${c}問)`).join(' / ');
   function report(es, prev, title) {
     if (!es.length) return '<p class="note">まだ記録がありません。クイズを解くと、ここに間違いの記録と傾向が出ます。</p>';
     const A = analyze(es), P = prev && prev.length ? analyze(prev) : null;
@@ -97,10 +92,10 @@
       const ws = Object.entries(A.weak[k]).map(([c, w]) => [c, w.s / w.n, w]).filter(x => x[1] < 0.75).sort((a, b) => a[1] - b[1] || b[2].n - a[2].n).slice(0, 3);
       for (const [c, v, w] of ws) {
         const wr = Object.entries(w.wrong).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([p, m]) => `${nameOf(k, p)}×${m}`).join('、');
-        weakRows.push(`<li><b>${n}・${c}</b> 得点率 ${pct(v)}%(${w.n}問)${wr ? `<br><span class="hint">選んだ誤答: ${wr}</span>` : ''}<br><span class="hint">正解: ${correctOf(k, c)}</span></li>`);
+        weakRows.push(`<li><b>${n}・${c}</b> 得点率 ${pct(v)}%(${w.n}問)${wr ? `<br><span class="hint">選んだ誤答: ${wr}</span>` : ''}<br><span class="hint">この区分で多かった正解: ${topOf(w.right)}</span></li>`);
       }
     }
-    if (weakRows.length) h += `<h3>植生・土壌・農業で落としている区分</h3><ul class="rlist">${weakRows.join('')}</ul>`;
+    if (weakRows.length) h += `<h3>植生・耕地・作物で落としている区分</h3><ul class="rlist">${weakRows.join('')}</ul>`;
     // 行動
     const acts = [];
     for (const [t, n] of errs.slice(0, 3)) if (n >= 2 || errs.length <= 2) acts.push(`<b>${ERR[t][0]}(${n}問)</b>: ${ERR[t][1]}`);
@@ -108,7 +103,7 @@
     const worstCode = codes.map(c => [c, A.byCode[c].ok / A.byCode[c].n, A.byCode[c].n]).filter(x => x[2] >= 2 && x[1] < 0.5).sort((a, b) => a[1] - b[1])[0];
     if (worstCode) acts.push(`<b>${worstCode[0]}(${G.KOPPEN[worstCode[0]].name})が最も苦手</b>: 「気候を読む」で地図を「ケッペン」にして ${worstCode[0]} の地点を5か所タップし、判定の手順を声に出して追う。`);
     const worstItem = ITEMS.slice(1).map(([k, n]) => [k, n, A.item[k]]).sort((a, b) => a[2] - b[2])[0];
-    if (worstItem[2] < 0.6) acts.push(`<b>${worstItem[1]}の得点率が${pct(worstItem[2])}%</b>: 上の「落としている区分」の正解を、気候区分とセットでノートに書き出して覚え直す。`);
+    if (worstItem[2] < 0.6) acts.push(`<b>${worstItem[1]}の得点率が${pct(worstItem[2])}%</b>: 地図を「植生」「農業」に切り替えて、上の「落としている区分」の地域で実際の分布を確かめる。`);
     if (!acts.length) acts.push('大きな偏りはありません。地点表示なしのまま、平均85点以上を目標に続けましょう。');
     h += `<h3>次にやること</h3><ol class="steps-list">${acts.map(a => `<li>${a}</li>`).join('')}</ol>`;
     return h;
@@ -117,7 +112,7 @@
     const rows = es.map((e, j) => [e, offset + j + 1]).filter(([e]) => e.total < 100).reverse().slice(0, 50);
     if (!rows.length) return '';
     const m = v => v >= 1 ? '○' : v > 0 ? '△' : '×';
-    return `<h3>間違えた問題の記録(新しい順・最大50件)</h3><div class="tablewrap"><table class="months rlog"><tr><th>問</th><th>正解</th><th>回答</th><th>植</th><th>土</th><th>農</th><th>作</th><th>点</th><th>緯度</th><th>標高</th></tr>${rows.map(([e, n]) => `<tr><td>${n}</td><td>${e.code}</td><td class="${e.r.kop === 1 ? '' : 'ng'}">${e.a.kop || '—'}</td><td>${m(e.r.veg)}</td><td>${m(e.r.soil)}</td><td>${m(e.r.agri)}</td><td>${m(e.r.crops)}</td><td>${e.total}</td><td>${Math.abs(e.lat)}°${e.lat >= 0 ? 'N' : 'S'}</td><td>${Math.round(e.elev / 10) * 10}</td></tr>`).join('')}</table></div>`;
+    return `<h3>間違えた問題の記録(新しい順・最大50件)</h3><div class="tablewrap"><table class="months rlog"><tr><th>問</th><th>正解</th><th>回答</th><th>植生</th><th>耕地</th><th>作物</th><th>点</th><th>位置</th><th>標高</th></tr>${rows.map(([e, n]) => `<tr><td>${n}</td><td>${e.code}</td><td class="${e.r.kop === 1 ? '' : 'ng'}">${e.a.kop || '—'}</td><td>${m(e.r.veg)}</td><td>${m(e.r.land)}</td><td>${m(e.r.crops)}</td><td>${e.total}</td><td>${Math.abs(e.lat)}°${e.lat >= 0 ? 'N' : 'S'} ${e.lon != null ? Math.abs(e.lon) + '°' + (e.lon >= 0 ? 'E' : 'W') : ''}</td><td>${Math.round(e.elev / 10) * 10}</td></tr>`).join('')}</table></div>`;
   }
   // sel: 'all' | 'now' | 数字(第n回)
   function render(box, sel, onChange) {

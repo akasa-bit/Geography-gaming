@@ -162,6 +162,8 @@ details.model ul { padding-left: 1.2em; margin: 8px 0; display: flex; flex-direc
 table.rlog td.ng { color: var(--bad); font-weight: 500; }
 table.rlog td, table.rlog th { text-align: center; }
 .milestone { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-body.busy .panel, body.busy .steps { opacity: 0.55; pointer-events: none; }
+.datalist { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; font-size: 0.88rem; }
+.datalist dt { font-size: 0.72rem; color: var(--ink-2); letter-spacing: 0.06em; margin-top: 6px; }
+.datalist dd { margin: 0; }
 .foot { color: var(--ink-2); font-size: 0.78rem; border-top: 1px solid var(--line); padding-top: 8px; }
 @media (prefers-reduced-motion: no-preference) { .chip, .btn, .step { transition: background-color 0.12s, border-color 0.12s; } }

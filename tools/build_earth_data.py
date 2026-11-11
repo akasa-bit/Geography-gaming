@@ -5,10 +5,12 @@
 必要なファイル(入手先は data/SOURCES.md):
   etopo2022.txt  udel_air.nc  udel_precip.nc  oisst.nc  air2m.nc  gpcp.nc
   uwnd.nc  vwnd.nc  ucur.txt  vcur.txt  pb_plates.txt  pb_poles.txt
+  potveg.asc.gz  gaez/<作物>.tif  cattle.tif sheep.tif goats.tif pigs.tif  gprv.shp/.dbf/.shx
 """
 import base64, gzip, json, math, os, re, sys
 import numpy as np
 import netCDF4
+import rasterio, shapefile
 
 R = sys.argv[1].rstrip('/') + '/'
 W, H = 360, 180
@@ -204,6 +206,68 @@ for k, c in enumerate(order):
     plates.append({'code': c, 'name': NAMES[c], 'dir': int(round(math.degrees(math.atan2(vx, vy)) / 45) * 45 % 360), 'speed': round(float(np.hypot(pvx[m], pvy[m]).mean()), 1)})
 print('プレート', [(p['name'], int((plate == k).sum()), p['dir'], p['speed']) for k, p in enumerate(plates)])
 
+# ---------- 植生: SAGE Global Potential Vegetation (Ramankutty & Foley 1999), 5分格子・15区分 ----------
+with gzip.open(R + 'potveg.asc.gz', 'rt') as f:
+    hdr = [f.readline().split() for _ in range(6)]
+    pv = np.loadtxt(f, dtype=np.int16)                 # 北→南, 西→東
+assert pv.shape == (2160, 4320), pv.shape
+pv6 = pv.reshape(H, 12, W, 12).transpose(0, 2, 1, 3).reshape(H, W, 144)
+veg = np.zeros((H, W), dtype=np.uint8); veg2 = np.zeros((H, W), dtype=np.uint8)
+for y in range(H):
+    for x in range(W):
+        v = pv6[y, x]; v = v[(v >= 1) & (v <= 15)]
+        if len(v) < 36: continue                         # データのある部分が1/4未満なら「なし」
+        c = np.bincount(v, minlength=16); o = np.argsort(-c)
+        veg[y, x] = o[0]
+        if c[o[1]] >= 0.25 * len(v): veg2[y, x] = o[1]   # 2番目に広い区分(25%以上を占める場合)
+print('植生データのある陸セル', int(((veg > 0) & land).sum()), '/', int(land.sum()), '区分別', np.bincount(veg[land].ravel(), minlength=16).tolist())
+
+# ---------- 作物: GAEZ+ 2015 収穫面積 (Frolking et al. 2020; FAO/IIASA GAEZ v4 に基づく), 5分格子・1000ha ----------
+lat_edge = np.radians(90 - np.arange(H + 1))
+cell_km2 = (6371.0 ** 2) * np.radians(1.0) * (np.sin(lat_edge[:-1]) - np.sin(lat_edge[1:]))   # 1°セルの面積
+CROPS = ['Wheat', 'Rice', 'Maize', 'Barley', 'Othercereals', 'Millet', 'Sorghum', 'PotatoAndSweetpotato', 'Cassava', 'Yamsandotherroots', 'Sugarcane', 'Sugarbeet', 'Soybean', 'Pulses',
+         'Rapeseed', 'Sunflower', 'Groundnut', 'Oilpalmfruit', 'Olives', 'Cotton', 'Banana', 'Stimulants', 'Tobacco', 'Vegetables', 'Foddercrops', 'CropsNES']
+def tif5(path):
+    with rasterio.open(path) as d:
+        a = d.read(1).astype(float); assert a.shape == (2160, 4320) and abs(d.bounds.top - 90) < 1e-6 and abs(d.bounds.left + 180) < 1e-6
+        nd = d.nodata
+    a[~np.isfinite(a)] = 0; a[a < 0] = 0
+    if nd is not None: a[a == nd] = 0
+    return a.reshape(H, 12, W, 12).sum(axis=(1, 3))
+crop_frac = np.zeros((len(CROPS), H, W))
+for k, c in enumerate(CROPS):
+    crop_frac[k] = tif5(R + 'gaez/' + c + '.tif') * 10.0 / cell_km2[:, None]   # 1000ha=10km² → セル面積に対する割合
+print('作物の世界合計(100万ha):', {c: round(float((crop_frac[k] * cell_km2[:, None]).sum() / 1e4), 1) for k, c in enumerate(CROPS)})
+
+# ---------- 家畜: FAO Gridded Livestock of the World 2015 (GLW 4, Gilbert et al. 2018), 5分格子・頭数 ----------
+STOCK = ['cattle', 'sheep', 'goats', 'pigs']
+stock = np.stack([tif5(R + n + '.tif') / cell_km2[:, None] for n in STOCK])      # 頭/km²
+print('家畜の世界合計(億頭):', {n: round(float((stock[k] * cell_km2[:, None]).sum() / 1e8), 2) for k, n in enumerate(STOCK)})
+
+# ---------- 大地形: Hasterok et al. (2022) Global geologic provinces ----------
+# 最後の造山運動(lastorogen)を高校地理の3区分に対応させる。1=新期造山帯 2=古期造山帯 0=安定陸塊(その他の大陸地殻)・海洋
+NEW = {'Cordilleran', 'Alpine-Himalayan', 'Antilles'}
+OLD = {'Caledonian', 'Variscan-Hercynian', 'Uralian', 'Tasmanides', 'Tasmanide', 'Kazakh', 'Mongol', 'Indo-Sinian', 'Scotian'}
+sf = shapefile.Reader(R + 'gprv')
+fn = [f[0] for f in sf.fields[1:]]
+oro = np.zeros((H, W), dtype=np.uint8)
+for sr in sf.iterShapeRecords():
+    rec = dict(zip(fn, sr.record)); cls = 1 if rec['lastorogen'] in NEW else 2 if rec['lastorogen'] in OLD else 0
+    if not cls or rec['crust_type'] == 'oceanic': continue
+    pts = np.array(sr.shape.points); parts = list(sr.shape.parts) + [len(pts)]
+    x0, y0, x1, y1 = sr.shape.bbox
+    xs = np.where((LON >= x0) & (LON <= x1))[0]; ys = np.where((LAT >= y0) & (LAT <= y1))[0]
+    if not len(xs) or not len(ys): continue
+    px, py = np.meshgrid(LON[xs], LAT[ys]); inside = np.zeros(px.shape, dtype=bool)
+    for a, b in zip(parts[:-1], parts[1:]):
+        r = pts[a:b]; xa, ya = r[:-1, 0], r[:-1, 1]; xb, yb = r[1:, 0], r[1:, 1]
+        for i in range(len(xa)):
+            if ya[i] == yb[i]: continue
+            inside ^= ((ya[i] > py) != (yb[i] > py)) & (px < (xb[i] - xa[i]) * (py - ya[i]) / (yb[i] - ya[i]) + xa[i])
+    sub = oro[np.ix_(ys, xs)]; sub[inside] = cls; oro[np.ix_(ys, xs)] = sub
+oro[~land] = 0
+print('大地形(陸セル): 安定陸塊ほか', int((land & (oro == 0)).sum()), '新期', int((oro == 1).sum()), '古期', int((oro == 2).sum()))
+
 # ---------- 書き出し ----------
 fields = [
     ('elev', 'i2', np.round(elev)),
@@ -214,10 +278,13 @@ fields = [
     ('wu', 'i1', np.clip(np.round(wu * 10), -127, 127)), ('wv', 'i1', np.clip(np.round(wv * 10), -127, 127)),       # 0.1 m/s
     ('cu', 'i1', np.clip(np.round(cu * 200), -127, 127)), ('cv', 'i1', np.clip(np.round(cv * 200), -127, 127)),     # 0.5 cm/s
     ('sstA', 'i1', np.clip(np.round(sst_anom * 10), -127, 127)),     # 0.1 ℃
+    ('veg', 'u1', veg), ('veg2', 'u1', veg2), ('oro', 'u1', oro),
+    ('crop', 'u1', np.clip(np.round(np.sqrt(crop_frac) * 255), 0, 255)),      # 割合 = (値/255)², [作物][y][x]
+    ('stock', 'u1', np.clip(np.round(np.sqrt(stock) * 8), 0, 255)),           # 頭/km² = (値/8)², [家畜][y][x]
 ]
 NP = {'i1': 'i1', 'u1': 'u1', 'i2': '<i2', 'u2': '<u2'}
 blob = b''.join(np.ascontiguousarray(a, dtype=NP[dt]).tobytes() for _, dt, a in fields)
-out = {'W': W, 'H': H, 'plates': plates, 'layout': [[n, dt, int(np.asarray(a).size)] for n, dt, a in fields],
+out = {'W': W, 'H': H, 'plates': plates, 'crops': CROPS, 'stock': STOCK, 'layout': [[n, dt, int(np.asarray(a).size)] for n, dt, a in fields],
        'gz': base64.b64encode(gzip.compress(blob, 9, mtime=0)).decode()}
 dst = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'earth.js')
 os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -237,6 +304,12 @@ def cell(la_, lo_):
                 if 0 <= yy < H and land[yy, xx] and (best is None or abs(dy) + abs(dx) < best[0]): best = (abs(dy) + abs(dx), yy, xx)
         if best: y, x = best[1], best[2]
     return y, x
+def show(nm, la_, lo_):
+    y, x = cell(la_, lo_)
+    top = sorted([(crop_frac[k, y, x], CROPS[k]) for k in range(len(CROPS))], reverse=True)[:3]
+    print(f'{nm}: 植生{veg[y, x]}/{veg2[y, x]} 大地形{oro[y, x]} 作物' + ' '.join(f'{n}{v * 100:.1f}%' for v, n in top) + ' 家畜(頭/km²)' + ' '.join(f'{n}{stock[k, y, x]:.0f}' for k, n in enumerate(STOCK)))
+for nm, la_, lo_ in [('東京', 35.7, 139.7), ('アイオワ', 42, -93.5), ('パンジャブ', 30.5, 75.5), ('マナオス', -3, -60), ('ニジェール内陸', 14, 8), ('ウラル', 58, 59.5), ('アルプス', 46.5, 10), ('NZ南島', -44.5, 170.5)]:
+    show(nm, la_, lo_)
 for nm, la_, lo_ in [('東京', 35.7, 139.7), ('ロンドン', 51.5, -0.1), ('シンガポール', 1.3, 103.8), ('カイロ', 30, 31.2), ('モスクワ', 55.8, 37.6), ('ローマ', 41.9, 12.5), ('ヤクーツク', 62, 129.7), ('ブエノスアイレス', -34.6, -58.4), ('ラサ', 29.7, 91.1), ('昭和基地付近', -70, 40)]:
     y, x = cell(la_, lo_)
     print(f'{nm}: 標高{elev[y, x]:.0f}m 1月{T[0, y, x]:.1f}℃ 7月{T[6, y, x]:.1f}℃ 年降水{P[:, y, x].sum():.0f}mm')

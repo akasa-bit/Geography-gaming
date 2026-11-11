@@ -16,7 +16,7 @@
   <header class="top">
     <div class="brand">
       <h1>自然地理シミュレーター</h1>
-      <p class="world-name">実在の地球の観測データで学ぶ(1°格子)</p>
+      <p class="world-name">実在の地球のデータで学ぶ(1°格子)</p>
     </div>
     <nav class="steps" aria-label="手順">
       <button type="button" class="step" data-mode="terrain" id="stepTerrain"><span class="step-n">1</span>地形・プレート</button>
@@ -33,6 +33,9 @@
           <label class="check"><input type="checkbox" id="ovCurrent"> 海流</label>
           <label class="check"><input type="checkbox" id="ovWind"> 風</label>
           <label class="check"><input type="checkbox" id="ovGrid" checked> 緯線</label>
+          <label class="sel" id="agriWrap" hidden>表示
+            <select id="agriSel"></select>
+          </label>
           <label class="sel">時期
             <select id="month">
               <option value="-1">年間</option>
@@ -52,7 +55,7 @@
       <!-- 1. 地形・プレート -->
       <div id="panelTerrain" class="pane">
         <h2>地形とプレートを見る</h2>
-        <p class="lead">実在の地球のデータです。地図の種類を切り替えて、地形・大地形(安定陸塊と造山帯)・プレート境界・マントルの流れの関係を確かめましょう。</p>
+        <p class="lead">実在の地球のデータです。地図の種類を切り替えて、地形・大地形(安定陸塊と造山帯)・プレート境界の関係を確かめましょう。</p>
         <div class="group">
           <h3>読み取りのポイント</h3>
           <ul class="points">
@@ -65,7 +68,7 @@
         <div class="group">
           <h3>プレートと動き</h3>
           <div id="plateList" class="plates"></div>
-          <p class="hint">向きと速さはプレート全体の平均。出典: Bird (2003) PB2002。マントルの流れはプレート境界からの推定です。</p>
+          <p class="hint">向きと速さはプレート全体の平均。出典: Bird (2003) PB2002。</p>
         </div>
         <button type="button" class="btn primary wide" id="runClimate">気候を読む</button>
       </div>
@@ -73,7 +76,7 @@
       <!-- 2. 気候 -->
       <div id="panelClimate" class="pane" hidden>
         <h2>気候を読む</h2>
-        <p class="lead">地図をタップすると、その地点の雨温図とハイサーグラフ、気候区分の判定手順が出ます。地図の種類を切り替え、海流や風を重ねて、気候因子との関係を確かめましょう。</p>
+        <p class="lead">地図をタップすると、その地点の雨温図とハイサーグラフ、気候区分の判定手順、植生・作物・家畜のデータが出ます。地図を「植生」「農業」に切り替えたり、海流や風を重ねたりして、気候との関係を確かめましょう。</p>
         <div id="inspect"></div>
         <details class="model" id="realNote">
           <summary>このデータの出典(実在の地球)</summary>
@@ -85,8 +88,12 @@
             <li><b>風</b>: NCEP/NCAR 再解析 地表付近(1991〜2020年平均)</li>
             <li><b>海流</b>: NOAA GODAS 深さ5m(1991〜2020年平均)。暖流・寒流は、同緯度の海の平均水温との差(±1.2℃)と流れの向き(高緯度向き/低緯度向き)で色分け</li>
             <li><b>プレート</b>: Bird (2003) PB2002。高校地理の主要プレートにまとめて表示</li>
+            <li><b>大地形</b>: Hasterok ほか (2022) Global geologic provinces の「最後の造山運動」を、新期・古期造山帯と安定陸塊に対応させたもの</li>
+            <li><b>植生</b>: ウィスコンシン大学 SAGE Global Potential Vegetation(Ramankutty &amp; Foley 1999)。人の手が入る前の潜在自然植生</li>
+            <li><b>作物</b>: GAEZ+ 2015 収穫面積(Frolking ほか 2020、FAO/IIASA GAEZ v4 にもとづく)</li>
+            <li><b>家畜</b>: FAO Gridded Livestock of the World 2015(Gilbert ほか 2018)</li>
           </ul>
-          <p class="hint">値は1°×1°(約100km四方)の平均なので、都市の観測値とは少しずれます(山がちな所は標高が平均され、気温が低めに出ます)。南極・グリーンランド内陸の気温はNCEP/NCAR再解析、降水はGPCPで補っています。ケッペン・植生の地図はこの気温・降水量から判定したもので、大地形の区分は教科書の造山帯の位置を手で指定しています。</p>
+          <p class="hint">値は1°×1°(約100km四方)の平均なので、都市の観測値とは少しずれます。南極・グリーンランド内陸の気温はNCEP/NCAR再解析、降水はGPCPで補っています。ケッペンの区分は、この気温・降水量を教科書の判定法にあてはめた結果です。シミュレーションは使っていません。</p>
         </details>
         <button type="button" class="btn primary wide" id="toQuiz">クイズを始める</button>
       </div>
@@ -105,7 +112,7 @@
       </div>
     </aside>
   </main>
-  <footer class="foot">NOAA・デラウェア大学・GPCP・Bird (2003) のデータを1°格子に集計。ケッペンの区分は教科書の判定法(乾燥限界 r=20(t+x))で判定。</footer>
+  <footer class="foot">NOAA・デラウェア大学・GPCP・FAO・SAGE などの公開データを1°格子に集計。ケッペンの区分は観測値を教科書の判定法(乾燥限界 r=20(t+x))にあてはめたもの。</footer>
 </div>
 
 <script src="data/earth.js"></script>

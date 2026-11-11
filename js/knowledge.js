@@ -1,4 +1,4 @@
-/* 地理の知識データ: 気候区分・植生・土壌・農業・作物の名称、色、対応関係、解説 */
+/* 名称・色と、教科書的な解説文。植生・作物・家畜の区分はデータセットの区分に合わせてある */
 (function (root) {
   'use strict';
   const KOPPEN = {
@@ -19,59 +19,40 @@
   };
   const KOPPEN_ORDER = ['Af', 'Am', 'Aw', 'BS', 'BW', 'Cs', 'Cw', 'Cfa', 'Cfb', 'Df', 'Dw', 'ET', 'EF', 'H'];
 
+  // 植生: SAGE Global Potential Vegetation (Ramankutty & Foley 1999) の15区分。番号はデータの値
   const VEG = {
-    rainforest: { name: '熱帯雨林', sub: 'セルバ・ジャングル(常緑広葉樹の密林)', color: '#0e6b3a' },
-    savanna: { name: 'サバナ', sub: '丈の長い草原と疎林(バオバブ・アカシア)', color: '#c9c15a' },
-    steppe: { name: 'ステップ', sub: '丈の短い草原', color: '#e3cf8f' },
-    desert: { name: '砂漠', sub: '植生はほとんどなし(オアシスを除く)', color: '#eedfc0' },
-    sclerophyll: { name: '硬葉樹林', sub: 'オリーブ・コルクガシ・月桂樹', color: '#9aa63c' },
-    laurel: { name: '照葉樹林', sub: 'シイ・カシ・クスなどの常緑広葉樹', color: '#2f8f4e' },
-    deciduous: { name: '落葉広葉樹林・混合林', sub: 'ブナ・ナラ、針葉樹との混合林', color: '#74b85a' },
-    prairie: { name: '長草草原', sub: 'プレーリー・パンパ・プスタ', color: '#b9d67a' },
-    taiga: { name: '針葉樹林(タイガ)', sub: 'エゾマツ・トドマツ・カラマツ', color: '#2d6f73' },
-    tundra: { name: 'ツンドラ', sub: '地衣類・蘚苔類', color: '#aab7ae' },
-    ice: { name: '氷雪(植生なし)', sub: '大陸氷河', color: '#f2f5f7' },
-    alpine: { name: '高山植生', sub: '高山草原(標高により垂直分布)', color: '#b58aa5' }
+    1: { name: '熱帯常緑樹林', sub: '熱帯雨林(セルバ・ジャングル)', color: '#0e6b3a' },
+    2: { name: '熱帯落葉樹林', sub: '熱帯季節林・雨緑林(乾季に落葉)', color: '#5a9a3c' },
+    3: { name: '温帯常緑広葉樹林', sub: '照葉樹林・硬葉樹林', color: '#2f8f4e' },
+    4: { name: '温帯常緑針葉樹林', sub: 'マツ・スギ・米マツなど', color: '#3f7f6a' },
+    5: { name: '温帯落葉広葉樹林', sub: 'ブナ・ナラ・カエデ', color: '#8ac25a' },
+    6: { name: '亜寒帯常緑針葉樹林', sub: 'タイガ(トウヒ・モミ)', color: '#2d6f73' },
+    7: { name: '亜寒帯落葉針葉樹林', sub: 'タイガ(カラマツ)', color: '#5c8f8c' },
+    8: { name: '混合林', sub: '針葉樹と広葉樹が混じる森林', color: '#63a56a' },
+    9: { name: 'サバナ', sub: '丈の長い草原と疎林', color: '#c9c15a' },
+    10: { name: '草原・ステップ', sub: 'ステップ・プレーリー・パンパ', color: '#e3cf8f' },
+    11: { name: '密な低木林', sub: '低木が密生(マキ・チャパラルなど)', color: '#a8a04a' },
+    12: { name: 'まばらな低木林', sub: '半砂漠の低木・とげのある灌木', color: '#d6c7a0' },
+    13: { name: 'ツンドラ', sub: '地衣類・蘚苔類', color: '#aab7ae' },
+    14: { name: '砂漠', sub: '植生はほとんどなし', color: '#eedfc0' },
+    15: { name: '極地の荒原・氷雪', sub: '岩・氷におおわれる', color: '#f2f5f7' }
   };
-  const VEG_ORDER = ['rainforest', 'savanna', 'steppe', 'desert', 'sclerophyll', 'laurel', 'deciduous', 'prairie', 'taiga', 'tundra', 'ice', 'alpine'];
+  const VEG_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
-  const SOIL = {
-    latosol: 'ラトソル(赤色土)', redyellow: '赤黄色土', desert: '砂漠土', chestnut: '栗色土',
-    black: '黒色土(チェルノーゼム・プレーリー土)', brown: '褐色森林土', podzol: 'ポドゾル', tundra: 'ツンドラ土', none: '土壌なし(氷雪)', alpine: '高山土'
-  };
-  const SOIL_ORDER = ['latosol', 'redyellow', 'desert', 'chestnut', 'black', 'brown', 'podzol', 'tundra', 'none', 'alpine'];
-
-  const AGRI = {
-    shifting: '焼畑農業', nomad: '遊牧', oasis: 'オアシス農業', rice: 'アジア式稲作(集約的稲作)', upland: 'アジア式畑作(集約的畑作)',
-    medit: '地中海式農業', mixed: '混合農業', dairy: '酪農', horti: '園芸農業', grain: '企業的穀物農業', ranch: '企業的牧畜',
-    plantation: 'プランテーション農業', none: '農業はほぼ不可能(非農業地域)'
-  };
-  const AGRI_ORDER = ['shifting', 'nomad', 'oasis', 'rice', 'upland', 'medit', 'mixed', 'dairy', 'horti', 'grain', 'ranch', 'plantation', 'none'];
-
+  // 作物: GAEZ+ 2015 の区分(収穫面積)。キーはデータのファイル名
   const CROPS = {
-    rubber: '天然ゴム', oilpalm: '油ヤシ', cacao: 'カカオ', banana: 'バナナ', cassava: 'キャッサバ', coffee: 'コーヒー', sugarcane: 'サトウキビ', cotton: '綿花', tea: '茶', jute: 'ジュート',
-    rice: '米', wheat: '小麦', maize: 'トウモロコシ', soy: '大豆', millet: '雑穀(ミレット・ソルガム)', dates: 'ナツメヤシ', olive: 'オリーブ', grape: 'ブドウ', citrus: '柑橘類', cork: 'コルクガシ',
-    potato: 'ジャガイモ', rye: 'ライ麦', oats: 'エン麦', beet: 'テンサイ', barley: '大麦', pasture: '牧草(乳牛)', sheep: '羊', cattle: '肉牛', camel: 'ラクダ', reindeer: 'トナカイ', llama: 'リャマ・アルパカ・ヤク', nothing: '該当なし'
+    Wheat: '小麦', Rice: '米', Maize: 'トウモロコシ', Barley: '大麦', Othercereals: 'その他の麦類・穀物(ライ麦・エン麦など)', Millet: 'ミレット(雑穀)', Sorghum: 'ソルガム(コウリャン)',
+    PotatoAndSweetpotato: 'ジャガイモ・サツマイモ', Cassava: 'キャッサバ', Yamsandotherroots: 'ヤムイモ・タロイモ', Sugarcane: 'サトウキビ', Sugarbeet: 'テンサイ', Soybean: '大豆', Pulses: '豆類',
+    Rapeseed: 'ナタネ', Sunflower: 'ヒマワリ', Groundnut: 'ラッカセイ', Oilpalmfruit: '油ヤシ', Olives: 'オリーブ', Cotton: '綿花', Banana: 'バナナ', Stimulants: 'コーヒー・茶・カカオ',
+    Tobacco: 'タバコ', Vegetables: '野菜', Foddercrops: '飼料作物(牧草など)', CropsNES: 'その他の作物(果樹・ゴムなど)'
   };
-  const CROP_ORDER = Object.keys(CROPS);
+  // 家畜: FAO Gridded Livestock of the World 2015
+  const STOCK = { cattle: '牛', sheep: '羊', goats: 'ヤギ', pigs: '豚' };
+  const STOCK_MIN = { cattle: 15, sheep: 15, goats: 15, pigs: 20 }; // 「多い」とみなす密度(頭/km²)
+  // 耕地の広がり: 全作物の収穫面積の合計がセル面積に占める割合(二期作などは重複して数える)
+  const LAND = { 0: 'ほとんど耕作されていない(1%未満)', 1: '耕地が点在する(1〜10%)', 2: '耕地が多い(10〜35%)', 3: '大部分が耕地(35%以上)' };
+  const landClass = f => f < 0.01 ? 0 : f < 0.10 ? 1 : f < 0.35 ? 2 : 3;
 
-  // 気候区分ごとの対応(full=典型, part=部分点)。植生の full は地図の植生区分も加える。
-  const MATCH = {
-    Af: { veg: [['rainforest'], []], soil: [['latosol'], ['redyellow']], agri: [['shifting', 'plantation'], ['rice']], crops: [['rubber', 'oilpalm', 'cacao', 'banana', 'cassava'], ['rice', 'coffee', 'sugarcane']] },
-    Am: { veg: [['rainforest'], ['savanna']], soil: [['latosol'], ['redyellow']], agri: [['rice', 'plantation'], ['shifting']], crops: [['rice', 'rubber', 'banana', 'sugarcane', 'tea', 'jute', 'oilpalm'], ['cacao', 'cassava', 'coffee']] },
-    Aw: { veg: [['savanna'], []], soil: [['latosol'], ['redyellow']], agri: [['plantation', 'shifting', 'rice', 'ranch'], ['upland', 'nomad']], crops: [['coffee', 'sugarcane', 'cotton', 'rice', 'cassava', 'millet'], ['cattle', 'maize', 'banana', 'jute', 'soy']] },
-    BS: { veg: [['steppe'], ['prairie']], soil: [['chestnut', 'black'], ['desert']], agri: [['nomad', 'ranch', 'grain'], ['upland', 'oasis']], crops: [['wheat', 'sheep', 'cattle', 'millet'], ['cotton', 'camel', 'barley', 'maize']] },
-    BW: { veg: [['desert'], []], soil: [['desert'], []], agri: [['oasis', 'nomad'], ['none']], crops: [['dates', 'camel'], ['sheep', 'cotton', 'wheat', 'nothing']] },
-    Cs: { veg: [['sclerophyll'], []], soil: [['brown', 'redyellow'], []], agri: [['medit'], ['horti']], crops: [['olive', 'grape', 'citrus', 'cork', 'wheat'], ['sheep', 'barley']] },
-    Cw: { veg: [['laurel'], ['savanna', 'deciduous']], soil: [['redyellow'], ['latosol']], agri: [['rice', 'upland'], ['plantation']], crops: [['rice', 'tea', 'cotton', 'maize', 'sugarcane'], ['wheat', 'coffee', 'soy', 'millet']] },
-    Cfa: { veg: [['laurel', 'deciduous', 'prairie'], []], soil: [['redyellow', 'brown'], ['black']], agri: [['rice', 'mixed'], ['horti', 'grain', 'ranch', 'upland']], crops: [['rice', 'maize', 'soy', 'tea', 'cotton', 'wheat'], ['cattle', 'citrus', 'sugarcane']] },
-    Cfb: { veg: [['deciduous'], []], soil: [['brown'], ['podzol']], agri: [['mixed', 'dairy', 'horti'], ['ranch']], crops: [['wheat', 'pasture', 'potato', 'beet', 'barley', 'rye'], ['oats', 'sheep', 'cattle', 'grape']] },
-    Df: { veg: [['taiga', 'deciduous'], ['prairie']], soil: [['podzol'], ['brown', 'black']], agri: [['mixed', 'dairy', 'grain'], ['none']], crops: [['wheat', 'rye', 'oats', 'potato', 'pasture', 'beet'], ['barley', 'maize', 'soy']] },
-    Dw: { veg: [['taiga'], ['deciduous']], soil: [['podzol'], ['brown']], agri: [['upland'], ['none', 'mixed', 'nomad']], crops: [['wheat', 'soy', 'millet', 'maize'], ['potato', 'rye', 'reindeer', 'nothing']] },
-    ET: { veg: [['tundra'], []], soil: [['tundra'], []], agri: [['nomad', 'none'], []], crops: [['reindeer'], ['nothing']] },
-    EF: { veg: [['ice'], []], soil: [['none'], []], agri: [['none'], []], crops: [['nothing'], []] },
-    H: { veg: [['alpine'], []], soil: [['alpine'], []], agri: [['nomad'], ['upland', 'none']], crops: [['llama', 'potato'], ['barley', 'maize', 'sheep']] }
-  };
   const AGRI_NOTE = {
     Af: '伝統的にはキャッサバ・タロイモなどの焼畑農業。欧米資本による天然ゴム・油ヤシ・カカオのプランテーションも発達。土壌はやせたラトソル。',
     Am: 'モンスーンの豊富な雨を利用した稲作(アジア)や、茶・サトウキビ・天然ゴムのプランテーション。',
@@ -96,6 +77,6 @@
     ET: 'ツンドラ土: 低温で分解が進まない強酸性の土壌。地下は永久凍土。', EF: '氷雪に覆われ土壌は発達しない。', H: '標高により変化する(高山土)。'
   };
 
-  const API = { KOPPEN, KOPPEN_ORDER, VEG, VEG_ORDER, SOIL, SOIL_ORDER, AGRI, AGRI_ORDER, CROPS, CROP_ORDER, MATCH, AGRI_NOTE, SOIL_NOTE };
+  const API = { KOPPEN, KOPPEN_ORDER, VEG, VEG_ORDER, CROPS, STOCK, STOCK_MIN, LAND, landClass, AGRI_NOTE, SOIL_NOTE };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.Geo = API;
 })(typeof window !== 'undefined' ? window : globalThis);
