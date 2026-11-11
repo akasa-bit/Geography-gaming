@@ -47,12 +47,56 @@
     return res;
   }
 
+  /* ---- 農業区分(自作): 作物・家畜・灌漑・気候のデータに規則をあてはめ、教科書の農業地域区分に近い型を決める ----
+   * 経営の性格(自給的か企業的か)を表すデータはないので、新大陸か旧大陸か・アジアかどうかで代用している。 */
+  function farmType(c) { // c: {kop, lat, lon, total, crop(名前→割合), cattle, sheep, goats, pigs, irr, lps}
+    const k = c.kop, g = k[0], f = n => c.crop[n] || 0, T = c.total, st = c.cattle + c.sheep + c.goats;
+    const newWorld = c.lon < -30 || (c.lon > 110 && c.lat < -10) || (c.lat < -17 && c.lon > 10 && c.lon < 42); // 南北アメリカ・オセアニア・南部アフリカ
+    const asia = c.lon >= 60 && c.lon <= 150 && c.lat >= -11 && c.lat <= 54 && !(c.lon < 90 && c.lat > 40);       // 南・東南・東アジア(モンスーンアジア)
+    const steppeBelt = c.lat >= 43 && c.lat <= 57 && c.lon >= 22 && c.lon <= 92;                                 // ウクライナ〜カザフスタンの黒土地帯
+    const plant = f('Coffee') + f('Cocoa') + f('Tea') + f('Rubber') + f('Oilpalm') + f('Sugarcane') + f('Banana') + f('Coconut');
+    const grain = f('Wheat') + f('Barley') + f('Othercereals') + f('Rapeseed') + f('Sunflower');
+    const garden = f('Vegetables') + f('Temperatefruit') + f('Citrus') + f('Tropicalfruit');
+    const medit = f('Olives') + f('Temperatefruit') + f('Citrus');
+    const herd = () => st < 1 ? 'none' : newWorld ? 'ranch' : 'nomad';
+    if (k === 'EF' || c.lps === 5) return 'none';
+    if (T < 0.01 && st < 1 && !(g === 'A' && T >= 0.0005)) return 'none';
+    if (k === 'ET') return T < 0.02 ? (st >= 1 ? herd() : 'none') : 'mixed';
+    if (k === 'H') return T >= 0.03 ? 'shifting' : herd();                       // 高地: 自給的な畑作(粗放的定住農業) / 放牧
+    if (g === 'B') {
+      if (c.irr >= 0.5 && T >= 0.03) return 'oasis';                             // 乾燥地の灌漑農業
+      if (T < 0.05) return herd();
+      if (asia) return f('Rice') >= 0.3 * T ? 'rice' : 'upland';
+      if (grain >= 0.5 * T && (newWorld || steppeBelt)) return 'grain';
+      if (newWorld) return c.cattle >= 10 && T < 0.15 ? 'ranch' : 'grain';
+      return k === 'BS' && c.lat > 30 && c.lon < 60 && medit + f('Wheat') >= 0.4 * T ? 'medit' : 'shifting';
+    }
+    if (g === 'A') {
+      if (plant >= 0.35 * T && plant >= 0.02) return 'plantation';
+      if (asia) return T < 0.02 ? 'shifting' : f('Rice') >= 0.25 * T ? 'rice' : 'upland';
+      if (newWorld && T < 0.06 && c.cattle >= 8) return 'ranch';                 // カンポ・リャノなど
+      if (newWorld && T >= 0.15 && f('Soybean') + f('Maize') + f('Wheat') >= 0.5 * T) return 'grain';
+      if (T < 0.0005 && c.lps !== 4) return st >= 3 ? herd() : 'none';
+      return 'shifting';                                                        // 熱帯林・サバナの自給的農業(焼畑・粗放的定住農業)
+    }
+    // 温帯・亜寒帯
+    if (k === 'Cs' && T >= 0.02) return 'medit';
+    if (asia) return T < 0.01 ? (st >= 3 ? 'nomad' : 'none') : f('Rice') >= 0.25 * T ? 'rice' : 'upland';
+    if (plant >= 0.4 * T && plant >= 0.03 && Math.abs(c.lat) < 32) return 'plantation';
+    if (T < 0.03) return st >= 3 ? (newWorld ? 'ranch' : (c.cattle >= 4 ? 'dairy' : 'nomad')) : 'none';
+    if (grain >= 0.6 * T && (newWorld || steppeBelt) && c.cattle + c.pigs < 30) return 'grain';
+    if (newWorld && T < 0.1 && st >= 10 && f('Fodder') < 0.3 * T) return 'ranch';
+    if (garden >= 0.35 * T) return 'horti';
+    if ((f('Fodder') >= 0.4 * T || (c.cattle >= 25 && T < 0.25)) && (k === 'Cfb' || g === 'D')) return 'dairy';
+    return 'mixed';
+  }
+
   /* ---- 観測データ → 表示・出題用のデータ ---- */
   function build(world, E) {
     const land = new Uint8Array(N); for (let i = 0; i < N; i++) land[i] = world.elev[i] > 0 ? 1 : 0;
     const D = { land, T: [], P: [], wu: [], wv: [], tAnn: new Float32Array(N), pAnn: new Float32Array(N), kop: new Array(N), veg: E.veg, veg2: E.veg2, agri: E.lps, agri2: E.lps2,
       cu: new Float32Array(N), cv: new Float32Array(N), sstA: new Float32Array(N), ckind: new Int8Array(N), coastD: Core.distField(land.map(v => 1 - v)),
-      crop: [], stock: [], cropAll: new Float32Array(N), cropNames: E.cropNames, stockNames: E.stockNames };
+      crop: [], stock: [], farm: new Array(N).fill(null), irr: E.irr, cropAll: new Float32Array(N), cropNames: E.cropNames, stockNames: E.stockNames };
     for (let m = 0; m < 12; m++) {
       const t = new Float32Array(N), p = new Float32Array(N), u = new Float32Array(N), v = new Float32Array(N);
       for (let i = 0; i < N; i++) { t[i] = E.T[m * N + i] / 10; p[i] = E.P[m * N + i]; u[i] = E.wu[m * N + i] / 10; v[i] = E.wv[m * N + i] / 10; } // ℃, mm, m/s
@@ -67,6 +111,10 @@
       const k = koppen(t, p, lat, world.elev[i]);
       D.tAnn[i] = k.tAvg; D.pAnn[i] = k.R; D.kop[i] = land[i] ? k.code : null;
       D.cu[i] = E.cu[i] / 200; D.cv[i] = E.cv[i] / 200; D.sstA[i] = E.sstA[i] / 10; // m/s, ℃
+      if (land[i]) { // 農業区分(自作の規則)
+        const crop = {}; E.cropNames.forEach((n, j) => { crop[n] = D.crop[j][i]; });
+        D.farm[i] = farmType({ kop: k.code, lat, lon: Core.lonOf(i % W), total: D.cropAll[i], crop, cattle: D.stock[0][i], sheep: D.stock[1][i], goats: D.stock[2][i], pigs: D.stock[3][i], irr: E.irr[i] / 255, lps: E.lps[i] });
+      }
       // 暖流=同緯度の海より暖かく高緯度へ向かう流れ、寒流=冷たく低緯度へ向かう流れ
       const pole = D.cv[i] * (lat >= 0 ? 1 : -1), mg = Math.hypot(D.cu[i], D.cv[i]);
       D.ckind[i] = land[i] || Math.abs(lat) > 72 || mg < 0.024 ? 0 : (E.sstA[i] > 12 && pole > 0.15 * mg) ? 1 : (E.sstA[i] < -12 && pole < -0.15 * mg) ? -1 : 0;
@@ -74,6 +122,6 @@
     return D;
   }
 
-  const API = { koppen, build, HIGHLAND_M };
+  const API = { koppen, build, farmType, HIGHLAND_M };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.Climate = API;
 })(typeof window !== 'undefined' ? window : globalThis);

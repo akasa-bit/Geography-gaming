@@ -12,7 +12,7 @@
   const STATS_KEY = 'geo-quiz-stats-v2';
 
   /* ---------- 状態 ---------- */
-  const S = { world: null, sim: null, mode: 'terrain', layer: 'terrain', month: -1, agri: 'lps', inspect: -1, quiz: null, review: null, qtype: store.get('geo-quiz-type') === 'map' ? 'map' : 'graph', stats: store.get(STATS_KEY) || { n: 0, sum: 0, by: {} } };
+  const S = { world: null, sim: null, mode: 'terrain', layer: 'terrain', month: -1, agri: 'farm', inspect: -1, quiz: null, review: null, qtype: store.get('geo-quiz-type') === 'map' ? 'map' : 'graph', stats: store.get(STATS_KEY) || { n: 0, sum: 0, by: {} } };
   const cv = $('map'), ctx = cv.getContext('2d');
   const SC = 3, BW = W * SC, BH = H * SC; // 下絵は1セル(1°)=3px
   const base = document.createElement('canvas'); base.width = BW; base.height = BH;
@@ -43,6 +43,7 @@
   const KCOL = {}, VCOL = {};
   for (const k in G.KOPPEN) KCOL[k] = hex(G.KOPPEN[k].color);
   for (const k in G.VEG) VCOL[k] = hex(G.VEG[k].color);
+  const FCOL = {}; for (const k in G.FARM) FCOL[k] = hex(G.FARM[k].color);
   const ACOL = {}; for (const k in G.AGRI) ACOL[k] = hex(G.AGRI[k].color);
   const B_COL = { 1: '#e02d2d', 2: '#1d6fe0', 3: '#e0a81d' };
   const LF = { 0: ['安定陸塊', '#e3d6a4'], 1: ['新期造山帯', '#c9503a'], 2: ['古期造山帯', '#6f9a58'] };
@@ -84,6 +85,7 @@
         } else if (layer === 'precip') {
           c = (m < 0 ? cPann : cPmon)(bil(fieldP)); if (!land) c = [c[0] * 0.55 + 100, c[1] * 0.55 + 108, c[2] * 0.55 + 116];
         } else if (!land) c = [214, 232, 240];
+        else if (layer === 'agri' && S.agri === 'farm') { const v = sim.farm[near] || sim.farm[i00] || sim.farm[i10] || sim.farm[i01] || sim.farm[i11]; c = v ? FCOL[v] : [205, 208, 212]; c = [c[0] * flat, c[1] * flat, c[2] * flat]; }
         else if (layer === 'agri' && S.agri === 'lps') { const v = sim.agri[near] || sim.agri[i00] || sim.agri[i10] || sim.agri[i01] || sim.agri[i11]; c = v ? ACOL[v] : [205, 208, 212]; c = [c[0] * flat, c[1] * flat, c[2] * flat]; }
         else if (layer === 'agri') { c = (isDens ? cDens : cFrac)(bil(fieldA) * gain); c = [c[0] * flat, c[1] * flat, c[2] * flat]; }
         else if (layer === 'koppen') {
@@ -197,6 +199,7 @@
     else if (lay === 'precip') h = rampH(S.month < 0 ? R_PANN : R_PMON, S.month < 0 ? 'mm/年' : 'mm/月', v => Math.round(v));
     else if (lay === 'koppen') h = G.KOPPEN_ORDER.map(k => sw(G.KOPPEN[k].color, k)).join('');
     else if (lay === 'veg') h = G.VEG_ORDER.map(k => sw(G.VEG[k].color, G.VEG[k].name)).join('') + sw('#cdd0d4', 'データなし');
+    else if (lay === 'agri' && S.agri === 'farm') h = G.FARM_ORDER.map(k => sw(G.FARM[k].color, G.FARM[k].name)).join('') + '<span class="item">※データに規則をあてはめた自作の区分</span>';
     else if (lay === 'agri' && S.agri === 'lps') h = G.AGRI_ORDER.map(k => sw(G.AGRI[k].color, G.AGRI[k].name)).join('') + sw('#cdd0d4', 'データなし');
     else if (lay === 'agri') h = agriField()[1] ? rampH(R_DENS, '頭/km²', v => v) : rampH(R_FRAC, '%(土地に占める収穫面積)', v => Math.round(v * 100 / agriField()[2]));
     if ($('ovCurrent').checked) h += `<span class="item"><span class="ln" style="border-color:#d9281e"></span>暖流</span><span class="item"><span class="ln" style="border-color:#1846c9"></span>寒流</span>`;
@@ -275,7 +278,7 @@
     const y = (i / W) | 0, lat = latOf(y), k = Climate.koppen(t, p, lat, S.world.elev[i]);
     const crops = sim.cropNames.map((n, j) => ({ key: n, v: sim.crop[j][i] })).filter(c => c.v >= 0.002).sort((a, b) => b.v - a.v);
     const stock = sim.stockNames.map((n, j) => ({ key: n, v: sim.stock[j][i] }));
-    return { i, t, p, lat, lon: lonOf(i % W), elev: S.world.elev[i], band: G.elevClass(S.world.elev[i]), k, veg: sim.veg[i], veg2: sim.veg2[i], agri: sim.agri[i], agri2: sim.agri2[i], oro: S.world.oro[i] || 0, cropAll: sim.cropAll[i], land: G.landClass(sim.cropAll[i]), crops, stock };
+    return { i, t, p, lat, lon: lonOf(i % W), elev: S.world.elev[i], band: G.elevClass(S.world.elev[i]), k, veg: sim.veg[i], veg2: sim.veg2[i], agri: sim.agri[i], agri2: sim.agri2[i], farm: sim.farm[i] || 'none', irr: sim.irr[i] / 255, oro: S.world.oro[i] || 0, cropAll: sim.cropAll[i], land: G.landClass(sim.cropAll[i]), crops, stock };
   }
   const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
   const pc1 = v => (v * 100).toFixed(v < 0.1 ? 1 : 0) + '%';
@@ -296,7 +299,7 @@
   const cropText = pd => pd.crops.length ? pd.crops.slice(0, 5).map(c => `${G.CROPS[c.key]} ${pc1(c.v)}`).join('、') : '作物の収穫面積はほぼなし(0.2%未満)';
   const stockText = pd => pd.stock.map(s => `${G.STOCK[s.key]} ${s.v < 10 ? s.v.toFixed(1) : Math.round(s.v)}`).join('、') + ' 頭/km²';
   function landDataHTML(pd) {
-    return `<dl class="datalist"><dt>植生(潜在自然植生)</dt><dd>${vegText(pd)}</dd><dt>大地形</dt><dd>${LF[pd.oro][0]}</dd><dt>農業形態(家畜生産システム)</dt><dd>${agriText(pd)}</dd><dt>耕地の広がり</dt><dd>${G.LAND[pd.land]} — 収穫面積の合計 ${pc1(pd.cropAll)}</dd><dt>主な作物(土地に占める収穫面積)</dt><dd>${cropText(pd)}</dd><dt>家畜の密度</dt><dd>${stockText(pd)}</dd></dl>`;
+    return `<dl class="datalist"><dt>植生(潜在自然植生)</dt><dd>${vegText(pd)}</dd><dt>大地形</dt><dd>${LF[pd.oro][0]}</dd><dt>農業区分(データから規則で判定)</dt><dd>${G.FARM[pd.farm].name}</dd><dt>家畜生産システム(FAO/ILRI)</dt><dd>${agriText(pd)}</dd><dt>灌漑の割合(収穫面積)</dt><dd>${pc1(pd.irr)}</dd><dt>耕地の広がり</dt><dd>${G.LAND[pd.land]} — 収穫面積の合計 ${pc1(pd.cropAll)}</dd><dt>主な作物(土地に占める収穫面積)</dt><dd>${cropText(pd)}</dd><dt>家畜の密度</dt><dd>${stockText(pd)}</dd></dl>`;
   }
   // ケッペンの判定手順を文章にする
   function koppenSteps(pd) {
@@ -363,7 +366,7 @@
   const cropName = k => k === 'none' ? '該当なし' : G.CROPS[k] || G.STOCK[k];
   function newQuestion() {
     const sim = S.sim, by = {};
-    for (let i = 0; i < N; i++) if (sim.kop[i] && sim.veg[i] && sim.agri[i] && Math.abs(latOf((i / W) | 0)) <= 82) (by[sim.kop[i]] = by[sim.kop[i]] || []).push(i);
+    for (let i = 0; i < N; i++) if (sim.kop[i] && sim.veg[i] && Math.abs(latOf((i / W) | 0)) <= 82) (by[sim.kop[i]] = by[sim.kop[i]] || []).push(i);
     const types = Object.keys(by).filter(k => by[k].length >= 3);
     // 苦手な区分を少し出やすくする
     const wts = types.map(k => { const st = S.stats.by[k]; return st && st.n ? 1.6 - st.ok / st.n : 1.2; });
@@ -372,7 +375,7 @@
     let i;
     if (S.qtype === 'map') { // 白地図: 陸上のランダムな点(面積に比例。緯度が高いほどセルが小さいので cos で重みづけ)
       const cand = []; let tot = 0;
-      for (let j = 0; j < N; j++) if (sim.kop[j] && sim.veg[j] && sim.agri[j]) { tot += Math.cos(latOf((j / W) | 0) * Math.PI / 180); cand.push([j, tot]); }
+      for (let j = 0; j < N; j++) if (sim.kop[j] && sim.veg[j]) { tot += Math.cos(latOf((j / W) | 0) * Math.PI / 180); cand.push([j, tot]); }
       const u = Math.random() * tot; let lo = 0, hi = cand.length - 1;
       while (lo < hi) { const m = (lo + hi) >> 1; if (cand[m][1] < u) lo = m + 1; else hi = m; }
       i = cand[lo][0];
@@ -413,7 +416,7 @@
     if (isMap) mk('標高', PTS.elev, chipGroup('qElev', G.ELEV.map((n, k) => [k, n]), q.ans.elev, false, k => { q.ans.elev = k; rerender(); }), '1°四方の平均標高。');
     mk('気候区分', PTS.kop, chipGroup('qKop', G.KOPPEN_ORDER.map(k => [k, `<span class="code">${k}</span>${G.KOPPEN[k].name.replace(/\(.*\)/, '')}`]), q.ans.kop, false, k => { q.ans.kop = k; rerender(); }));
     mk('植生', PTS.veg, chipGroup('qVeg', G.VEG_ORDER.map(k => [k, G.VEG[k].name]), q.ans.veg, false, k => { q.ans.veg = k; rerender(); }), '人の手が入る前の植生(潜在自然植生)で最も広いもの。');
-    mk('農業形態', PTS.agri, chipGroup('qAgri', G.AGRI_ORDER.map(k => [k, G.AGRI[k].name]), q.ans.agri, false, k => { q.ans.agri = k; rerender(); }), '最も広い型を1つ。' + G.AGRI_ORDER.slice(0, 3).map(k => `${G.AGRI[k].name}=${G.AGRI[k].sub}`).join(' / '));
+    mk('農業形態', PTS.agri, chipGroup('qAgri', G.FARM_ORDER.map(k => [k, G.FARM[k].name]), q.ans.agri, false, k => { q.ans.agri = k; rerender(); }), '作物・家畜・灌漑のデータから規則で判定した農業区分。');
     mk('作物・家畜', PTS.crops, chipGroup('qCrops', CROP_OPTS.map(k => [k, cropName(k)]), q.ans.crops, true, k => { toggle(q.ans.crops, k); rerender(); }), 'この地点で収穫面積の広い作物、または密度の高い家畜を1〜3つ。選んだものの平均で採点します。');
     const row = el('div', { class: 'row' });
     const sub = el('button', { type: 'button', class: 'btn primary', id: 'submitQuiz' }, '採点する'); sub.disabled = !q.ans.kop; sub.onclick = grade;
@@ -449,7 +452,8 @@
     if (q.type === 'map') res.elev = a.elev == null ? 0 : a.elev === pd.band ? 1 : Math.abs(a.elev - pd.band) === 1 ? 0.5 : 0;
     res.kop = a.kop === code ? 1 : (code === 'H' && a.kop === pd.k.base) ? 0.5 : (a.kop && a.kop[0] === code[0] && code !== 'H') ? 0.4 : 0;
     res.veg = a.veg == null ? 0 : a.veg === pd.veg ? 1 : a.veg === pd.veg2 ? 0.5 : 0;
-    res.agri = a.agri == null ? 0 : a.agri === pd.agri ? 1 : a.agri === pd.agri2 ? 0.5 : 0;
+    const nearFarm = G.FARM_NEAR.filter(p => p.includes(pd.farm)).map(p => p[0] === pd.farm ? p[1] : p[0]);
+    res.agri = a.agri == null ? 0 : a.agri === pd.farm ? 1 : nearFarm.includes(a.agri) ? 0.5 : 0;
     const ct = q.truth = cropTruth(pd);
     res.crops = a.crops.length ? a.crops.reduce((s, c) => s + (ct.full.includes(c) ? 1 : ct.part.includes(c) ? 0.5 : 0), 0) / a.crops.length : 0;
     let total = 0; for (const k in PTS) total += PTS[k] * res[k];
@@ -459,8 +463,8 @@
     const count = Review.add({
       t: Date.now(), type: q.type, code, base: pd.k.base, lat: pd.lat, lon: pd.lon, elev: Math.round(pd.elev), tMax: +pd.k.tMax.toFixed(1), tMin: +pd.k.tMin.toFixed(1), R: Math.round(pd.k.R), rt: pd.k.rainType,
       loc: q.type === 'map' || $('showLoc').checked, a: { elev: a.elev, kop: a.kop, veg: a.veg, agri: a.agri, crops: a.crops.slice() }, r: res, total: q.total,
-      ok: { elev: [pd.band], veg: [pd.veg, pd.veg2].filter(Boolean), agri: [pd.agri, pd.agri2].filter(Boolean), crops: ct.full.concat(ct.part) },
-      c: { elev: G.ELEV[pd.band], veg: G.VEG[pd.veg].name, agri: G.AGRI[pd.agri].name, crops: ct.full.map(cropName).join('・') }
+      ok: { elev: [pd.band], veg: [pd.veg, pd.veg2].filter(Boolean), agri: [pd.farm].concat(nearFarm), crops: ct.full.concat(ct.part) },
+      c: { elev: G.ELEV[pd.band], veg: G.VEG[pd.veg].name, agri: G.FARM[pd.farm].name, crops: ct.full.map(cropName).join('・') }
     });
     q.milestone = count % Review.BLOCK === 0 ? count / Review.BLOCK : 0;
     S.layer = 'koppen'; buildLayerChips(); refresh(); renderQuiz();
@@ -479,7 +483,7 @@
       ${q.type === 'map' ? line('標高', 'elev', a.elev != null ? G.ELEV[a.elev] : '', `${G.ELEV[pd.band]} — 平均 ${Math.round(pd.elev / 10) * 10} m`) : ''}
       ${line('気候区分', 'kop', a.kop ? `${a.kop} ${G.KOPPEN[a.kop].name}` : '', `${code} ${Kp.name}`)}
       ${line('植生', 'veg', a.veg != null ? G.VEG[a.veg].name : '', vegText(pd))}
-      ${line('農業形態', 'agri', a.agri != null ? G.AGRI[a.agri].name : '', agriText(pd))}
+      ${line('農業形態', 'agri', a.agri != null ? G.FARM[a.agri].name : '', G.FARM[pd.farm].name)}
       ${line('作物・家畜', 'crops', a.crops.map(cropName).join('、'), q.truth.full.map(cropName).join('、') + (q.truth.part.length ? `</b>(部分点: ${q.truth.part.map(cropName).join('、')})<b>` : ''))}
       ${chartsHTML(pd)}${factsHTML(pd, true)}
       <h3>この地点のデータ</h3>${landDataHTML(pd)}
@@ -516,7 +520,7 @@
     if (!window.EARTH) { $('readout').textContent = '地球のデータを読み込めませんでした。新しいブラウザ(gzip展開に対応したもの)で開いてください。'; return; }
     S.world = Core.realEarthWorld(window.EARTH);
     S.sim = Climate.build(S.world, window.EARTH);
-    $('agriSel').innerHTML = `<option value="lps">農業形態(家畜生産システム)</option><option value="all">作物の収穫面積の合計</option>` + S.sim.cropNames.map(k => `<option value="${k}">${G.CROPS[k]}</option>`).join('') + S.sim.stockNames.map(k => `<option value="${k}">${G.STOCK[k]}(頭/km²)</option>`).join('');
+    $('agriSel').innerHTML = `<option value="farm">農業区分(データから規則で判定)</option><option value="lps">家畜生産システム(FAO/ILRI)</option><option value="all">作物の収穫面積の合計</option>` + S.sim.cropNames.map(k => `<option value="${k}">${G.CROPS[k]}</option>`).join('') + S.sim.stockNames.map(k => `<option value="${k}">${G.STOCK[k]}(頭/km²)</option>`).join('');
     buildPlates(); buildLayerChips();
     setMode('terrain');
   }

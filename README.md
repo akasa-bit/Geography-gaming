@@ -22,7 +22,8 @@
 | 植生 | ウィスコンシン大学 SAGE Global Potential Vegetation(Ramankutty & Foley 1999) |
 | 作物 | MapSPAM 2020 V2r2 収穫面積(IFPRI、46作物を36区分に集約)。オリーブと飼料作物は GAEZ+ 2015 |
 | 家畜 | FAO Gridded Livestock of the World 2015 |
-| 農業形態 | FAO/ILRI Global livestock production systems v5(放牧中心/天水の耕作+家畜/灌漑の耕作+家畜/森林など/不適地) |
+| 家畜生産システム | FAO/ILRI Global livestock production systems v5 |
+| 農業区分 | 上の作物・家畜・灌漑・気候のデータに規則をあてはめた自作の区分(教科書のホイットルセー区分に近い13の型)。データセットではない |
 
 出典・URL・加工方法・クイズのしきい値は `data/SOURCES.md`。`python3 tools/build_earth_data.py <データを置いたフォルダ>` で再生成できる。
 

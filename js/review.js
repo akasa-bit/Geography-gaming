@@ -68,7 +68,7 @@
   /* ---- 表示 ---- */
   const pct = v => Math.round(v * 100);
   const bar = (v, cls) => `<span class="rbar"><i class="${cls || ''}" style="width:${Math.max(2, pct(v))}%"></i></span>`;
-  const nameOf = (k, key) => key === '(未回答)' ? key : k === 'elev' ? G.ELEV[key] : k === 'veg' ? G.VEG[key].name : k === 'agri' ? G.AGRI[key].name : k === 'land' ? G.LAND[key] : key === 'none' ? '該当なし' : G.CROPS[key] || G.STOCK[key];
+  const nameOf = (k, key) => key === '(未回答)' ? key : k === 'elev' ? G.ELEV[key] : k === 'veg' ? G.VEG[key].name : k === 'agri' ? (G.FARM[key] ? G.FARM[key].name : G.AGRI[key] ? G.AGRI[key].name : String(key)) : k === 'land' ? G.LAND[key] : key === 'none' ? '該当なし' : G.CROPS[key] || G.STOCK[key];
   const topOf = o => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([n, c]) => `${n}(${c}問)`).join(' / ');
   function report(es, prev, title) {
     if (!es.length) return '<p class="note">まだ記録がありません。クイズを解くと、ここに間違いの記録と傾向が出ます。</p>';

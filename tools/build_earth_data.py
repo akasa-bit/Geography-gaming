@@ -254,6 +254,16 @@ for k, c in enumerate(CROPS):
                 crop_frac[k] += agg5(d.read(1)) / 100.0 / cell_km2[:, None]      # ha → km² → セル面積に対する割合
     else:
         crop_frac[k] = tif5(R + 'gaez/' + GAEZ[c] + '.tif') * 10.0 / cell_km2[:, None]   # 1000ha=10km²
+# 灌漑の割合: MapSPAM の灌漑(_I)の収穫面積 ÷ 合計(_A)
+irr_ha = np.zeros((H, W)); all_ha = np.zeros((H, W))
+for n in znames:
+    if n.endswith('_I.tif') or n.endswith('_A.tif'):
+        with MemoryFile(zf.read(n)) as mf, mf.open() as d:
+            v = agg5(d.read(1))
+        if n.endswith('_I.tif'): irr_ha += v
+        else: all_ha += v
+irr = np.where(all_ha > 0, irr_ha / np.maximum(all_ha, 1e-9), 0)
+print('灌漑の割合(世界平均)', round(float(irr_ha.sum() / all_ha.sum()), 3))
 # 合計にはオリーブを入れない(MapSPAM の「その他」に含まれるため二重に数えない)
 crop_all = crop_frac[[k for k, c in enumerate(CROPS) if c != 'Olives']].sum(axis=0)
 print('作物の世界合計(100万ha):', {c: round(float((crop_frac[k] * cell_km2[:, None]).sum() / 1e4), 1) for k, c in enumerate(CROPS)})
@@ -315,6 +325,7 @@ fields = [
     ('sstA', 'i1', np.clip(np.round(sst_anom * 10), -127, 127)),     # 0.1 ℃
     ('veg', 'u1', veg), ('veg2', 'u1', veg2), ('oro', 'u1', oro), ('lps', 'u1', lps), ('lps2', 'u1', lps2),
     ('crop', 'u1', np.clip(np.round(np.sqrt(crop_frac) * 255), 0, 255)),      # 割合 = (値/255)², [作物][y][x]
+    ('irr', 'u1', np.clip(np.round(irr * 255), 0, 255)),                      # 灌漑の割合 = 値/255
     ('cropAll', 'u1', np.clip(np.round(np.sqrt(crop_all) * 180), 0, 255)),    # 収穫面積の合計の割合 = (値/180)²
     ('stock', 'u1', np.clip(np.round(np.sqrt(stock) * 8), 0, 255)),           # 頭/km² = (値/8)², [家畜][y][x]
 ]
