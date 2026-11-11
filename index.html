@@ -52,12 +52,12 @@
       <!-- 1. 地形・プレート -->
       <div id="panelTerrain" class="pane">
         <h2>地形とプレートをつくる</h2>
-        <p class="lead">ひな形を選ぶか、ブラシで大陸・山・プレートを描きます。プレートの動きを決めて「造山運動」を進めると、境界に山脈や海溝ができます。</p>
+        <p class="lead">自動生成では、マントル対流 → プレートの動き → 大地形の順に決まります。上昇流の上に広がる境界(海嶺)、下降流の上に狭まる境界(海溝・新期造山帯)ができます。ブラシで自分で描くこともできます。</p>
         <div class="group">
           <h3>ひな形</h3>
           <div class="row">
             <button type="button" class="btn" id="preEarth">地球(簡略)</button>
-            <button type="button" class="btn" id="preRandom">ランダム生成</button>
+            <button type="button" class="btn" id="preRandom">マントル対流から自動生成</button>
             <button type="button" class="btn" id="preBlank">海だけの惑星</button>
           </div>
         </div>
@@ -69,7 +69,8 @@
         </div>
         <div class="group">
           <h3>プレート</h3>
-          <p class="hint">塗るプレートを選び、動く向きと速さを決めます。隣のプレートと近づけば「狭まる境界」、離れれば「広がる境界」です。</p>
+          <p class="hint">「自動で決める」は、いまの地形を残したままマントル対流を作り、プレートの範囲・向き・速さを割り当てます。手で塗ったり向きを変えたりもできます。そのあと「造山運動を進める」で境界に合った地形ができます。</p>
+          <div class="row"><button type="button" class="btn" id="autoPlates">マントルとプレートを自動で決める</button></div>
           <div id="plateList" class="plates"></div>
           <div class="row">
             <button type="button" class="btn ghost" id="addPlate">プレートを追加</button>

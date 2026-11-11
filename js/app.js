@@ -45,6 +45,13 @@
   for (const k in G.KOPPEN) KCOL[k] = hex(G.KOPPEN[k].color);
   for (const k in G.VEG) VCOL[k] = hex(G.VEG[k].color);
   const B_COL = { 1: '#e02d2d', 2: '#1d6fe0', 3: '#e0a81d' };
+  const R_MANTLE = [[-1, '#1f4fa8'], [-0.35, '#8fb3e0'], [0, '#e9e4dc'], [0.35, '#f0a078'], [1, '#c2281c']];
+  const cMantle = ramp(R_MANTLE);
+  const LF = { 0: ['安定陸塊', '#e3d6a4'], 1: ['新期造山帯', '#c9503a'], 2: ['古期造山帯', '#6f9a58'] };
+  const LFC = [hex(LF[0][1]), hex(LF[1][1]), hex(LF[2][1])];
+  const BASIC = ['terrain', 'landform', 'plates', 'mantle'];
+  let mantleCache = null;
+  const mantleOf = w => w.mantle || (mantleCache = mantleCache || Core.mantleFromPlates(w));
 
   /* ---------- 地図の描画 ---------- */
   let bounds = null;
@@ -52,7 +59,7 @@
     const w = S.world, e = w.elev, sim = S.sim, layer = S.layer, d = img.data, m = S.month;
     const fieldT = sim && (m < 0 ? sim.tAnn : sim.T[m]), fieldP = sim && (m < 0 ? sim.pAnn : sim.P[m]);
     const pc = w.plates.map(p => hex(p.color));
-    const landPx = new Uint8Array(BW * BH);
+    const landPx = new Uint8Array(BW * BH), phi = layer === 'mantle' ? mantleOf(w) : null;
     for (let Y = 0; Y < BH; Y++) {
       const fy = clamp((Y + 0.5) / SC - 0.5, 0, H - 1), y0 = Math.floor(fy), y1 = Math.min(H - 1, y0 + 1), ty = fy - y0;
       for (let X = 0; X < BW; X++) {
@@ -65,11 +72,15 @@
         // 陰影(北西から光)
         const sh = land ? clamp(1 + ((e[i00] + e[i01]) - (e[i10] + e[i11]) + (e[i00] + e[i10]) - (e[i01] + e[i11])) / 6000, 0.72, 1.22) : 1;
         let c;
-        if (layer === 'terrain' || !sim && layer !== 'plates') {
+        if (layer === 'terrain' || !sim && !BASIC.includes(layer)) {
           c = land ? cLand(ev) : cSea(ev); c = [c[0] * sh, c[1] * sh, c[2] * sh];
         } else if (layer === 'plates') {
           const g = land ? 205 * sh : 150 + clamp(ev / 7000, -1, 0) * 50, p = pc[w.plate[near]] || [128, 128, 128];
           c = [g * 0.45 + p[0] * 0.55, g * 0.45 + p[1] * 0.55, g * 0.45 + p[2] * 0.55];
+        } else if (layer === 'mantle') {
+          c = cMantle(bil(phi)); const k = land ? 0.82 * sh : 1; c = [c[0] * k, c[1] * k, c[2] * k];
+        } else if (layer === 'landform') {
+          if (!land) c = cSea(ev); else { c = LFC[w.oro[near] || 0]; const s2 = 0.92 + (sh - 1) * 0.9; c = [c[0] * s2, c[1] * s2, c[2] * s2]; }
         } else if (layer === 'temp') {
           c = cTemp(bil(fieldT)); if (!land) c = [c[0] * 0.8 + 40, c[1] * 0.8 + 44, c[2] * 0.8 + 50];
         } else if (layer === 'precip') {
@@ -114,8 +125,17 @@
       }
       ctx.setLineDash([]);
     }
-    if (S.layer === 'plates') {
-      bounds = bounds || Core.boundaries(w); ctx.lineWidth = 2.5;
+    if (S.layer === 'mantle') { // マントル表層の流れ(上昇流→下降流)
+      const phi = mantleOf(w);
+      for (let y = 2; y < H - 1; y += 4) for (let x = 1 + (y % 8 ? 2 : 0); x < W; x += 5) {
+        const f = Core.mantleFlow(phi, y * W + x), mg = Math.hypot(f[0], f[1]); if (mg < 0.004) continue;
+        const s = Math.min(17, 6 + mg * 420) / mg;
+        arrow(cx(x) - f[0] * s / 2, cy(y) + f[1] * s / 2, f[0] * s, -f[1] * s, 'rgba(20,20,30,0.85)', 1.5);
+      }
+    }
+    if (S.layer === 'plates' || S.layer === 'mantle' || S.layer === 'landform') {
+      const thin = S.layer !== 'plates';
+      bounds = bounds || Core.boundaries(w); ctx.lineWidth = thin ? 1.6 : 2.5;
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const i = y * W + x, t = bounds.type[i]; if (!t) continue;
         ctx.strokeStyle = B_COL[t]; ctx.beginPath();
@@ -124,7 +144,7 @@
         ctx.stroke();
       }
       // プレートの移動方向
-      w.plates.forEach((p, pi) => {
+      if (!thin) w.plates.forEach((p, pi) => {
         let sx = 0, cxs = 0, sy = 0, n = 0;
         for (let i = 0; i < N; i++) if (w.plate[i] === pi) { const a = (i % W) / W * 2 * Math.PI; sx += Math.sin(a); cxs += Math.cos(a); sy += (i / W) | 0; n++; }
         if (!n) return;
@@ -171,9 +191,12 @@
     const sw = (c, t) => `<span class="item"><span class="sw" style="background:${c}"></span>${t}</span>`;
     const rampH = (st, unit, fmt) => `<span class="ramp">${fmt(st[0][0])}<i style="background:linear-gradient(90deg,${st.map(s => s[1]).join(',')})"></i>${fmt(st[st.length - 1][0])} ${unit}</span>`;
     let h = '';
-    const lay = S.sim || S.layer === 'plates' ? S.layer : 'terrain';
+    const lay = S.sim || BASIC.includes(S.layer) ? S.layer : 'terrain';
+    const bl = `<span class="item"><span class="ln" style="border-color:${B_COL[1]}"></span>狭まる境界</span><span class="item"><span class="ln" style="border-color:${B_COL[2]}"></span>広がる境界</span><span class="item"><span class="ln" style="border-color:${B_COL[3]}"></span>ずれる境界</span>`;
     if (lay === 'terrain') h = `<span class="ramp">深海<i style="background:linear-gradient(90deg,${R_SEA.map(s => s[1]).join(',')},${R_LAND.map(s => s[1]).join(',')})"></i>高山(標高)</span>`;
     else if (lay === 'plates') h = `<span class="item"><span class="ln" style="border-color:${B_COL[1]}"></span>狭まる境界(山脈・海溝)</span><span class="item"><span class="ln" style="border-color:${B_COL[2]}"></span>広がる境界(海嶺・地溝)</span><span class="item"><span class="ln" style="border-color:${B_COL[3]}"></span>ずれる境界</span>`;
+    else if (lay === 'mantle') h = `<span class="ramp">下降流<i style="background:linear-gradient(90deg,${R_MANTLE.map(s => s[1]).join(',')})"></i>上昇流</span><span class="item">矢印: マントル表層の流れ</span>` + bl;
+    else if (lay === 'landform') h = [0, 1, 2].map(k => sw(LF[k][1], LF[k][0])).join('') + bl;
     else if (lay === 'temp') h = rampH(R_TEMP, '℃', v => v);
     else if (lay === 'precip') h = rampH(S.month < 0 ? R_PANN : R_PMON, S.month < 0 ? 'mm/年' : 'mm/月', v => Math.round(v));
     else if (lay === 'koppen') h = G.KOPPEN_ORDER.map(k => sw(G.KOPPEN[k].color, k)).join('');
@@ -184,9 +207,9 @@
   }
 
   /* ---------- 地図の種類 ---------- */
-  const LAYERS = [['terrain', '地形'], ['plates', 'プレート'], ['temp', '気温'], ['precip', '降水量'], ['koppen', 'ケッペン'], ['veg', '植生']];
+  const LAYERS = [['terrain', '地形'], ['landform', '大地形'], ['plates', 'プレート'], ['mantle', 'マントル'], ['temp', '気温'], ['precip', '降水量'], ['koppen', 'ケッペン'], ['veg', '植生']];
   function layerAllowed(k) {
-    if (k === 'terrain' || k === 'plates') return true;
+    if (BASIC.includes(k)) return true;
     if (!S.sim) return false;
     return !(S.mode === 'quiz' && S.quiz && !S.quiz.done); // 出題中は答えが見える地図を隠す
   }
@@ -209,13 +232,13 @@
     $('panelTerrain').hidden = mode !== 'terrain'; $('panelClimate').hidden = mode !== 'climate'; $('panelQuiz').hidden = mode !== 'quiz';
     cv.classList.toggle('paint', mode === 'terrain');
     if (mode === 'terrain' && !layerAllowed(S.layer)) S.layer = 'terrain';
-    if (mode === 'climate') { if (S.layer === 'terrain' || S.layer === 'plates') S.layer = 'koppen'; if (S.inspect < 0) S.inspect = pickDefaultPoint(); renderInspect(); }
+    if (mode === 'climate') { if (BASIC.includes(S.layer)) S.layer = 'koppen'; if (S.inspect < 0) S.inspect = pickDefaultPoint(); renderInspect(); }
     if (mode === 'quiz') { if (!S.quiz) newQuestion(); else renderQuiz(); if (!layerAllowed(S.layer)) S.layer = 'terrain'; }
     buildLayerChips(); refresh();
   }
   function runSim() { S.sim = Climate.simulate(S.world); S.quiz = null; S.inspect = -1; }
   function worldChanged(keepSim) {
-    bounds = null; if (!keepSim) { S.sim = null; S.quiz = null; S.inspect = -1; }
+    bounds = null; mantleCache = null; if (!keepSim) { S.sim = null; S.quiz = null; S.inspect = -1; }
     $('worldName').textContent = S.world.name || '自作の惑星';
     saveWorld();
   }
@@ -232,7 +255,7 @@
     saveTimer = setTimeout(() => {
       const w = S.world, e = new Int16Array(N); for (let i = 0; i < N; i++) e[i] = Math.round(w.elev[i]);
       const b64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); };
-      store.set('geo-world', { name: w.name, plates: w.plates, e: b64(new Uint8Array(e.buffer)), p: b64(w.plate) });
+      store.set('geo-world', { name: w.name, plates: w.plates, e: b64(new Uint8Array(e.buffer)), p: b64(w.plate), o: b64(w.oro) });
     }, 600);
   }
   function loadWorld() {
@@ -241,6 +264,7 @@
       const u8 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)), w = Core.newWorld();
       const e = new Int16Array(u8(d.e).buffer), p = u8(d.p); if (e.length !== N || p.length !== N) return null;
       for (let i = 0; i < N; i++) { w.elev[i] = e[i]; w.plate[i] = p[i]; }
+      if (d.o) { const o = u8(d.o); if (o.length === N) w.oro.set(o); }
       w.plates = d.plates; w.name = d.name; return w;
     } catch (e) { return null; }
   }
@@ -251,7 +275,7 @@
     const box = $('toolChips'); box.innerHTML = '';
     for (const [k, name] of TOOLS) {
       const b = el('button', { type: 'button', class: 'chip', 'aria-pressed': S.tool === k }, name);
-      b.onclick = () => { S.tool = k; if (k === 'plate') S.layer = 'plates'; else if (S.layer === 'plates') S.layer = 'terrain'; buildToolChips(); buildLayerChips(); refresh(); };
+      b.onclick = () => { S.tool = k; if (k === 'plate') S.layer = 'plates'; else if (S.layer !== 'terrain') S.layer = 'terrain'; buildToolChips(); buildLayerChips(); refresh(); };
       box.appendChild(b);
     }
   }
@@ -265,17 +289,17 @@
       const name = el('span', { class: 'pname' }, p.name);
       const dir = el('select', { id: 'pdir' + i, 'aria-label': p.name + 'の向き' });
       for (const [d, t] of DIRS) { const o = el('option', { value: d }, t); if (d === p.dir) o.selected = true; dir.appendChild(o); }
-      dir.onchange = () => { p.dir = +dir.value; worldChanged(true); S.layer = 'plates'; buildLayerChips(); refresh(); };
+      dir.onchange = () => { p.dir = +dir.value; S.world.mantle = null; worldChanged(true); S.layer = 'plates'; buildLayerChips(); refresh(); };
       const sp = el('select', { id: 'pspd' + i, 'aria-label': p.name + 'の速さ' });
       for (const v of [0, 1, 2, 3, 5, 7, 9]) { const o = el('option', { value: v }, v ? v + ' cm/年' : '動かない'); if (v === p.speed) o.selected = true; sp.appendChild(o); }
       if (![0, 1, 2, 3, 5, 7, 9].includes(p.speed)) { const o = el('option', { value: p.speed }, p.speed + ' cm/年'); o.selected = true; sp.appendChild(o); }
-      sp.onchange = () => { p.speed = +sp.value; worldChanged(true); S.layer = 'plates'; buildLayerChips(); refresh(); };
+      sp.onchange = () => { p.speed = +sp.value; S.world.mantle = null; worldChanged(true); S.layer = 'plates'; buildLayerChips(); refresh(); };
       row.append(pick, name, dir, sp); box.appendChild(row);
     });
     $('addPlate').disabled = S.world.plates.length >= 10;
   }
   function pushUndo() {
-    S.undo.push({ e: Float32Array.from(S.world.elev), p: Uint8Array.from(S.world.plate) });
+    S.undo.push({ e: Float32Array.from(S.world.elev), p: Uint8Array.from(S.world.plate), o: Uint8Array.from(S.world.oro), ps: JSON.stringify(S.world.plates), m: S.world.mantle });
     if (S.undo.length > 12) S.undo.shift();
   }
   function paint(gx, gy) {
@@ -288,8 +312,8 @@
         const n = Core.fbm(i % W, y, 0.3, 2, 7);
         if (S.tool === 'land') { const t = 60 + 380 * f * (0.5 + n); if (e[i] < t) e[i] += (t - e[i]) * 0.6; }
         else if (S.tool === 'mountain') { if (e[i] > 0) e[i] = Math.min(8000, e[i] + 260 * f * (0.5 + n)); else e[i] += 900 * f; }
-        else if (S.tool === 'sea') { const t = -200 - 3600 * f; if (e[i] > t) e[i] += (t - e[i]) * 0.5; }
-        else if (S.tool === 'plate') w.plate[i] = S.activePlate;
+        else if (S.tool === 'sea') { const t = -200 - 3600 * f; if (e[i] > t) e[i] += (t - e[i]) * 0.5; if (e[i] <= 0) w.oro[i] = 0; }
+        else if (S.tool === 'plate') { w.plate[i] = S.activePlate; w.mantle = null; }
       }
     }
     if (S.tool === 'smooth') {
@@ -327,7 +351,7 @@
 
   function readout(gx, gy) {
     const i = gy * W + gx, w = S.world, la = latOf(gy), lo = lonOf(gx);
-    let t = `${Math.abs(la)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo)}°${lo >= 0 ? 'E' : 'W'} ・ ${w.elev[i] > 0 ? '標高' : '水深'} ${Math.abs(Math.round(w.elev[i] / 10) * 10)} m ・ ${w.plates[w.plate[i]] ? w.plates[w.plate[i]].name : ''}`;
+    let t = `${Math.abs(la)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo)}°${lo >= 0 ? 'E' : 'W'} ・ ${w.elev[i] > 0 ? '標高' : '水深'} ${Math.abs(Math.round(w.elev[i] / 10) * 10)} m ・ ${w.plates[w.plate[i]] ? w.plates[w.plate[i]].name : ''}${w.elev[i] > 0 ? ' ・ ' + LF[w.oro[i] || 0][0] : ''}`;
     const sim = S.sim;
     if (sim && layerAllowed('koppen')) {
       const m = S.month;
@@ -525,11 +549,15 @@
   $('preRandom').onclick = () => setWorld(Core.randomWorld(1 + Math.floor(Math.random() * 9999)));
   $('preBlank').onclick = () => { const w = Core.newWorld(); w.name = '海だけの惑星'; setWorld(w); };
   $('brushSize').oninput = e => { S.brush = +e.target.value; $('brushSizeOut').textContent = S.brush; };
-  $('undoBtn').onclick = () => { const u = S.undo.pop(); if (!u) return; S.world.elev.set(u.e); S.world.plate.set(u.p); worldChanged(false); buildLayerChips(); refresh(); };
+  $('undoBtn').onclick = () => { const u = S.undo.pop(); if (!u) return; S.world.elev.set(u.e); S.world.plate.set(u.p); S.world.oro.set(u.o); S.world.plates = JSON.parse(u.ps); S.world.mantle = u.m; S.activePlate = 0; buildPlates(); worldChanged(false); buildLayerChips(); refresh(); };
   $('addPlate').onclick = () => {
     const ps = S.world.plates; if (ps.length >= 10) return;
     ps.push(Core.mkPlate(ps.length, 'プレート' + 'ABCDEFGHIJ'[ps.length], 90, 3)); S.activePlate = ps.length - 1; S.tool = 'plate'; S.layer = 'plates';
     worldChanged(true); buildPlates(); buildToolChips(); buildLayerChips(); refresh();
+  };
+  $('autoPlates').onclick = () => {
+    pushUndo(); Core.autoPlates(S.world, 1 + Math.floor(Math.random() * 99999)); S.activePlate = 0; S.layer = 'mantle';
+    worldChanged(false); buildPlates(); buildLayerChips(); refresh();
   };
   $('orogenyBtn').onclick = () => { pushUndo(); Core.orogeny(S.world, 1 + Math.floor(Math.random() * 999)); S.world.name = S.world.name || '自作の惑星'; worldChanged(false); buildLayerChips(); refresh(); };
   $('runClimate').onclick = () => { runSim(); setMode('climate'); window.scrollTo(0, 0); };

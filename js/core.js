@@ -48,7 +48,7 @@
   const PLATE_COLORS = ['#e4572e', '#3b8ea5', '#f0b429', '#7a9e3a', '#9b5de5', '#d6588f', '#4f6d7a', '#c2703d', '#2a9d8f', '#8d99ae'];
 
   function newWorld() {
-    const w = { W, H, elev: new Float32Array(N), plate: new Uint8Array(N), plates: [], name: '' };
+    const w = { W, H, elev: new Float32Array(N), plate: new Uint8Array(N), oro: new Uint8Array(N), mantle: null, plates: [], name: '' }; // oro: 1=新期造山帯 2=古期造山帯
     w.elev.fill(-4000);
     w.plates = [mkPlate(0, 'プレートA', 90, 3)];
     return w;
@@ -129,13 +129,13 @@
           stamp(x, y, 1, (j, d) => { if (w.plate[j] === me) down[j] = Math.max(down[j], 1500 * s * (1 - d / 2)); });
         } else { // 海洋どうし: 番号の大きい方が沈み込み、他方に弧状列島
           if (me > ot) stamp(x, y, 1, (j, d) => { if (w.plate[j] === me) down[j] = Math.max(down[j], 1500 * s * (1 - d / 2)); });
-          else stamp(x, y, 3, (j, d) => { if (w.plate[j] === me) up[j] = Math.max(up[j], 1500 * s * Math.exp(-(d - 2) * (d - 2) / 1.2)); });
+          else stamp(x, y, 3, (j, d) => { if (w.plate[j] === me) up[j] = Math.max(up[j], 1900 * s * Math.exp(-(d - 2) * (d - 2) / 1.2)); });
         }
       } else if (t === 2) {
         if (landMe) { // 大陸の裂け目 → 地溝帯
           stamp(x, y, 2, (j, d) => { if (d < 1) down[j] = Math.max(down[j], 260 * s); else up[j] = Math.max(up[j], 90 * s); });
         } else { // 海嶺
-          stamp(x, y, 2, (j, d) => { if (e[j] < -2000) up[j] = Math.max(up[j], 500 * s * Math.exp(-d * d / 2)); });
+          stamp(x, y, 2, (j, d) => { if (e[j] < -2600) up[j] = Math.max(up[j], 500 * s * Math.exp(-d * d / 2)); });
         }
       }
     }
@@ -143,6 +143,7 @@
       const x = i % W, y = (i / W) | 0;
       const n = 0.55 + 0.9 * fbm(x, y, 0.35, 2, seed);
       e[i] = clamp(e[i] + up[i] * n - down[i], -9000, 8500);
+      if (up[i] > 250 && e[i] > 0 && b.type[i] !== 2) w.oro[i] = 1;
     }
     smooth(w, 0.12, true);
   }
@@ -157,33 +158,130 @@
     }
   }
 
-  /* ---- ランダムな世界 ---- */
-  function randomWorld(seed) {
-    const w = newWorld(), r = rng(seed);
-    w.name = 'ランダム惑星 #' + seed;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const a = Math.abs(latOf(y));
-      let f = fbm(x, y, 0.045, 5, seed) - 0.55 - (a > 62 ? (a - 62) * 0.004 : 0);
-      w.elev[y * W + x] = f > 0 ? 80 + f * 3200 : Math.max(-5500, -300 + f * 26000);
-    }
-    // ボロノイ分割でプレートを作る
-    const np = 7, seeds = [];
-    w.plates = [];
-    for (let p = 0; p < np; p++) {
-      seeds.push([r() * W, 8 + r() * (H - 16)]);
-      w.plates.push(mkPlate(p, 'プレート' + 'ABCDEFGHIJ'[p], Math.round(r() * 8) * 45 % 360, 2 + Math.round(r() * 7)));
-    }
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      let best = 1e9, bp = 0;
-      const jx = (fbm(x, y, 0.1, 3, seed + 7) - 0.5) * 22, jy = (fbm(x, y, 0.1, 3, seed + 13) - 0.5) * 22;
-      for (let p = 0; p < np; p++) {
-        let dx = Math.abs(x + jx - seeds[p][0]); dx = Math.min(dx, W - dx);
-        const d = Math.hypot(dx, y + jy - seeds[p][1]);
-        if (d < best) { best = d; bp = p; }
+  /* ---- マントル対流 ---- */
+  // phi > 0: 上昇流(プルーム・海嶺の下), phi < 0: 下降流(沈み込み帯の下)。表層の流れは phi の高い所から低い所へ。
+  function mantleField(seed, landBias) {
+    let p = new Float32Array(N);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) p[y * W + x] = fbm(x, y, 0.032, 2, seed) - (landBias ? landBias[y * W + x] : 0);
+    for (let k = 0; k < 4; k++) { // なめらかにして小さな渦を消す
+      const o = Float32Array.from(p);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x, u = y > 0 ? o[i - W] : o[i], d = y < H - 1 ? o[i + W] : o[i];
+        p[i] = (o[i] * 2 + o[idx(x + 1, y)] + o[idx(x - 1, y)] + u + d) / 6;
       }
-      w.plate[y * W + x] = bp;
     }
-    for (let k = 0; k < 2; k++) orogeny(w, seed + k);
+    let mn = 1e9, mx = -1e9; for (let i = 0; i < N; i++) { if (p[i] < mn) mn = p[i]; if (p[i] > mx) mx = p[i]; }
+    for (let i = 0; i < N; i++) p[i] = (p[i] - mn) / (mx - mn) * 2 - 1;
+    return p;
+  }
+  function mantleFlow(phi, i) { // [東向き, 北向き]
+    const x = i % W, y = (i / W) | 0;
+    return [-(phi[idx(x + 1, y)] - phi[idx(x - 1, y)]) / 2, -(phi[idx(x, Math.max(0, y - 1))] - phi[idx(x, Math.min(H - 1, y + 1))]) / 2];
+  }
+  // プレートの配置から逆にマントルの流れを推定する(手描き・地球モデル用)
+  function mantleFromPlates(w) {
+    const b = boundaries(w), dD = distField(b.type.map(t => t === 2 ? 1 : 0)), dC = distField(b.type.map(t => t === 1 ? 1 : 0));
+    const p = new Float32Array(N);
+    for (let i = 0; i < N; i++) p[i] = Math.exp(-dD[i] / 7) - Math.exp(-dC[i] / 7);
+    return p;
+  }
+  // マントル対流からプレートを決める: 同じ上昇流から湧き、同じ下降流へ向かう範囲が1枚のプレート
+  function platesFromMantle(w, phi) {
+    const climb = sign => {
+      const to = new Int32Array(N);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x; let best = i, bv = phi[i] * sign;
+        for (let dy = -1; dy <= 1; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; for (let dx = -1; dx <= 1; dx++) { const j = idx(x + dx, yy), v = phi[j] * sign; if (v > bv) { bv = v; best = j; } } }
+        to[i] = best;
+      }
+      for (let i = 0; i < N; i++) { let r = i; while (to[r] !== r) r = to[r]; let c = i; while (to[c] !== r) { const n = to[c]; to[c] = r; c = n; } }
+      return to;
+    };
+    const src = climb(1), snk = climb(-1), ids = new Map(), lab = new Int32Array(N);
+    for (let i = 0; i < N; i++) { const k = src[i] * N + snk[i]; if (!ids.has(k)) ids.set(k, ids.size); lab[i] = ids.get(k); }
+    // 小さすぎるプレートは、境界を最も長く接する隣のプレートに併合する
+    for (;;) {
+      const size = new Map(); for (let i = 0; i < N; i++) size.set(lab[i], (size.get(lab[i]) || 0) + 1);
+      let small = -1, sv = 1e9; for (const [k, v] of size) if (v < sv) { sv = v; small = k; }
+      if (size.size <= 1 || (size.size <= 9 && sv >= N * 0.03)) break;
+      const adj = new Map();
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x; if (lab[i] !== small) continue;
+        for (const j of [idx(x + 1, y), idx(x - 1, y), y > 0 ? i - W : i, y < H - 1 ? i + W : i]) if (lab[j] !== small) adj.set(lab[j], (adj.get(lab[j]) || 0) + 1);
+      }
+      let to = -1, tv = -1; for (const [k, v] of adj) if (v > tv) { tv = v; to = k; }
+      for (let i = 0; i < N; i++) if (lab[i] === small) lab[i] = to;
+    }
+    const order = [...new Set(lab)], vx = order.map(() => 0), vy = order.map(() => 0), cnt = order.map(() => 0);
+    for (let i = 0; i < N; i++) { const p = order.indexOf(lab[i]); w.plate[i] = p; const f = mantleFlow(phi, i); vx[p] += f[0]; vy[p] += f[1]; cnt[p]++; }
+    let vm = 1e-9; for (let p = 0; p < order.length; p++) { vx[p] /= cnt[p]; vy[p] /= cnt[p]; vm = Math.max(vm, Math.hypot(vx[p], vy[p])); }
+    w.plates = order.map((_, p) => {
+      const dir = (Math.round(Math.atan2(vx[p], vy[p]) * 180 / Math.PI / 45) * 45 + 360) % 360; // マントルに引きずられる向き
+      const sp = [1, 2, 3, 5, 7, 9][Math.min(5, Math.floor(Math.hypot(vx[p], vy[p]) / vm * 6))];
+      return mkPlate(p, 'プレート' + 'ABCDEFGHIJ'[p], dir, sp);
+    });
+    w.mantle = phi;
+  }
+  // いまの地形を残したまま、マントルとプレートだけ自動生成する(海嶺が大陸を避けるようにする)
+  function autoPlates(w, seed) {
+    const land = new Float32Array(N); for (let i = 0; i < N; i++) land[i] = w.elev[i] > 0 ? 0.16 : 0;
+    for (let k = 0; k < 6; k++) { const o = Float32Array.from(land); for (let y = 1; y < H - 1; y++) for (let x = 0; x < W; x++) { const i = y * W + x; land[i] = (o[i] + o[idx(x + 1, y)] + o[idx(x - 1, y)] + o[i - W] + o[i + W]) / 5; } }
+    platesFromMantle(w, mantleField(seed, land));
+  }
+
+  /* ---- マントル対流から惑星をまるごと生成 ---- */
+  function randomWorld(seed) {
+    const w = newWorld(), r = rng(seed), e = w.elev;
+    w.name = '自動生成の惑星 #' + seed;
+    platesFromMantle(w, mantleField(seed));
+    let b = boundaries(w);
+    const dDiv = distField(b.type.map(t => t === 2 ? 1 : 0)), dCon = distField(b.type.map(t => t === 1 ? 1 : 0));
+    // 大陸地殻: 広がる境界(新しい海洋底ができる所)を避ける。狭まる境界では大陸の縁になりやすい(沈み込み帯)
+    const c = new Float32Array(N);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x, a = Math.abs(latOf(y));
+      c[i] = fbm(x, y, 0.05, 4, seed + 77) - 0.22 * Math.exp(-dDiv[i] / 5) - 0.09 * Math.exp(-dCon[i] / 2.5) - (a > 68 ? (a - 68) * 0.006 : 0);
+    }
+    const thr = Float32Array.from(c).sort()[Math.floor(N * 0.69)];
+    const land = new Uint8Array(N); for (let i = 0; i < N; i++) land[i] = c[i] > thr ? 1 : 0;
+    const dLand = distField(land), dSea = distField(land.map(v => 1 - v));
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x, n = fbm(x, y, 0.2, 3, seed + 5);
+      if (land[i]) e[i] = 60 + Math.min(dSea[i], 7) * 40 + n * 260; // 安定陸塊: 楯状地・卓状地の低い平原や台地
+      else { // 海洋底は海嶺から離れる(古くなる)ほど深い。大陸の縁には大陸棚
+        const age = -2700 - 2500 * (1 - Math.exp(-dDiv[i] / 9)) - n * 500;
+        e[i] = dLand[i] <= 1 ? -160 - n * 200 : dLand[i] === 2 ? Math.max(age, -1800) : age;
+      }
+    }
+    for (let k = 0; k < 2; k++) orogeny(w, seed + k); // 新期造山帯・海溝・弧状列島・海嶺・地溝帯
+    // 古期造山帯: プレート境界から離れた大陸内部の、侵食されて低くなだらかな山地
+    for (let k = 0, made = 0; k < 400 && made < 4; k++) {
+      let x = Math.floor(r() * W), y = 6 + Math.floor(r() * (H - 12)), ang = r() * Math.PI * 2;
+      if (!land[y * W + x] || dCon[y * W + x] < 7 || dSea[y * W + x] < 2) continue;
+      const h = 800 + r() * 700, len = 7 + Math.floor(r() * 8);
+      for (let s = 0; s < len; s++) {
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+          const yy = Math.round(y) + dy; if (yy < 0 || yy >= H) continue;
+          const j = idx(Math.round(x) + dx, yy), add = h * Math.exp(-(dx * dx + dy * dy) / 1.3);
+          if (e[j] > 0 && w.oro[j] !== 1 && e[j] < 150 + add * 1.2) { e[j] = Math.max(e[j], 150 + add * (0.7 + 0.5 * fbm(j % W, yy, 0.4, 2, seed + 9))); if (add > 350) w.oro[j] = 2; }
+        }
+        ang += (r() - 0.5) * 0.7; x += Math.cos(ang); y += Math.sin(ang) * 0.8;
+        if (y < 3 || y > H - 4) break;
+      }
+      made++;
+    }
+    // ホットスポット: プレート内部の火山島列。プレートが動く向きに古い島(低い島・海山)が並ぶ
+    for (let k = 0, made = 0; k < 300 && made < 3; k++) {
+      const x = Math.floor(r() * W), y = 12 + Math.floor(r() * (H - 24)), i = y * W + x, p = w.plates[w.plate[i]];
+      if (e[i] > -3000 || dDiv[i] < 6 || dCon[i] < 6 || dLand[i] < 6 || p.speed < 2) continue;
+      const a = p.dir * Math.PI / 180;
+      for (let s = 0; s < 5; s++) {
+        const j = idx(Math.round(x + Math.sin(a) * s * 2), clamp(Math.round(y - Math.cos(a) * s * 2), 0, H - 1));
+        if (w.plate[j] !== w.plate[i]) break;
+        e[j] = 1100 - s * 420; for (const q of [idx(j % W + 1, (j / W) | 0), idx(j % W - 1, (j / W) | 0)]) if (e[q] < -1500) e[q] = -1500;
+      }
+      made++;
+    }
     return w;
   }
 
@@ -222,6 +320,7 @@
     [[[20, -22], [28, -28]], 1200, 4], [[[146, -20], [151, -28], [148, -36]], 900, 1], [[[168, -45], [172, -42]], 2200, 0.6], [[[135, -4], [146, -6]], 3400, 0.8],
     [[[40, 25], [44, 15]], 1700, 1.2], [[[-45, 62], [-40, 78]], 2300, 4], [[[-170, -84], [-60, -82], [0, -80], [90, -78], [170, -82]], 2800, 6]
   ];
+  const EARTH_NEW = [0, 1, 2, 4, 7, 10, 11, 12, 13, 15, 20, 21, 22, 27, 28], EARTH_OLD = [3, 8, 9, 14, 16, 26]; // EARTH_MTS の番号
   function inPoly(px, py, poly) {
     let c = false;
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -249,12 +348,13 @@
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x, lo = lonOf(x), la = latOf(y), n = fbm(x, y, 0.2, 3, 42);
       if (!land[i]) { w.elev[i] = -150 - Math.min(dLand[i], 6) / 6 * 3900 - n * 600; continue; }
-      let e = 40 + Math.min(dSea[i], 6) * 35 + n * 160, m = 0;
-      for (const [path, h, wd] of EARTH_MTS) for (let k = 0; k < path.length - 1; k++) {
+      let e = 40 + Math.min(dSea[i], 6) * 35 + n * 160, m = 0, mk = -1;
+      EARTH_MTS.forEach(([path, h, wd], mi) => { for (let k = 0; k < path.length - 1; k++) {
         const d = segDist(lo, la, path[k][0], path[k][1], path[k + 1][0], path[k + 1][1]) / 2 / 0.62;
-        m = Math.max(m, h * Math.exp(-(d / wd) * (d / wd)));
-      }
+        const v = h * Math.exp(-(d / wd) * (d / wd)); if (v > m) { m = v; mk = mi; }
+      } });
       w.elev[i] = e + m * (0.8 + 0.4 * n);
+      if (m > 300) w.oro[i] = EARTH_NEW.includes(mk) ? 1 : EARTH_OLD.includes(mk) ? 2 : 0;
     }
     // プレート(簡略)
     const P = [['太平洋プレート', 315, 9], ['北アメリカプレート', 270, 2], ['ユーラシアプレート', 90, 1], ['アフリカプレート', 45, 2], ['南アメリカプレート', 270, 3],
@@ -274,9 +374,12 @@
       else p = 3;
       w.plate[y * W + x] = p;
     }
+    // 狭まる境界に沿う島々(日本・フィリピン・インドネシアなど)も新期造山帯
+    const eb = boundaries(w), dc = distField(eb.type.map(t => t === 1 ? 1 : 0));
+    for (let i = 0; i < N; i++) if (w.elev[i] > 0 && !w.oro[i] && dc[i] <= 1 && Math.abs(latOf((i / W) | 0)) < 62) w.oro[i] = 1;
     return w;
   }
 
-  const API = { W, H, N, latOf, lonOf, idx, clamp, rng, fbm, newWorld, mkPlate, distField, boundaries, orogeny, smooth, randomWorld, earthWorld, PLATE_COLORS };
+  const API = { W, H, N, latOf, lonOf, idx, clamp, rng, fbm, newWorld, mkPlate, distField, boundaries, orogeny, smooth, randomWorld, earthWorld, mantleField, mantleFlow, mantleFromPlates, platesFromMantle, autoPlates, PLATE_COLORS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.Core = API;
 })(typeof window !== 'undefined' ? window : globalThis);
