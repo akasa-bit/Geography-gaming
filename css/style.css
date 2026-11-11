@@ -165,5 +165,6 @@ table.rlog td, table.rlog th { text-align: center; }
 .datalist { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; font-size: 0.88rem; }
 .datalist dt { font-size: 0.72rem; color: var(--ink-2); letter-spacing: 0.06em; margin-top: 6px; }
 .datalist dd { margin: 0; }
+.refmap { display: block; width: 100%; height: auto; border: 1px solid var(--line); margin-top: 8px; }
 .foot { color: var(--ink-2); font-size: 0.78rem; border-top: 1px solid var(--line); padding-top: 8px; }
 @media (prefers-reduced-motion: no-preference) { .chip, .btn, .step { transition: background-color 0.12s, border-color 0.12s; } }

@@ -32,7 +32,7 @@
 
 ## ファイル
 
-- `data/earth.js` 地球のデータ(生成物) / `data/SOURCES.md` 出典
+- `data/earth.js` 地球のデータ(生成物) / `data/SOURCES.md` 出典 / `data/whittlesey.jpg` 農業地域区分の元の地図(利用者提供、出典未確認)
 - `tools/build_earth_data.py` データの集計スクリプト
 - `js/core.js` 格子・データの展開・プレート境界
 - `js/climate.js` ケッペン判定と表示用データの組み立て
