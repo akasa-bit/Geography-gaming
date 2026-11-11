@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--head-->
+<title>自然地理シミュレーター</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Shippori+Mincho:wght@700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<!--/head-->
+</head>
+<body>
+<!--body-->
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>自然地理シミュレーター</h1>
+      <p class="world-name">実在の地球のデータで学ぶ(1°格子)</p>
+    </div>
+    <nav class="steps" aria-label="手順">
+      <button type="button" class="step" data-mode="terrain" id="stepTerrain"><span class="step-n">1</span>地形・プレート</button>
+      <button type="button" class="step" data-mode="climate" id="stepClimate"><span class="step-n">2</span>気候を読む</button>
+      <button type="button" class="step" data-mode="quiz" id="stepQuiz"><span class="step-n">3</span>気候判定クイズ</button>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <section class="mapcol" aria-label="地図">
+      <div class="maptools">
+        <div class="chips" id="layerChips" role="group" aria-label="地図の種類"></div>
+        <div class="overlays">
+          <label class="check"><input type="checkbox" id="ovCurrent"> 海流</label>
+          <label class="check"><input type="checkbox" id="ovWind"> 風</label>
+          <label class="check"><input type="checkbox" id="ovGrid" checked> 緯線</label>
+          <label class="sel" id="agriWrap" hidden>表示
+            <select id="agriSel"></select>
+          </label>
+          <label class="sel">時期
+            <select id="month">
+              <option value="-1">年間</option>
+              <option value="0">1月</option><option value="1">2月</option><option value="2">3月</option><option value="3">4月</option>
+              <option value="4">5月</option><option value="5">6月</option><option value="6">7月</option><option value="7">8月</option>
+              <option value="8">9月</option><option value="9">10月</option><option value="10">11月</option><option value="11">12月</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="mapwrap"><canvas id="map" width="1080" height="540" aria-label="世界地図"></canvas></div>
+      <p class="readout" id="readout">地図にカーソルを合わせると、その地点の情報が出ます。</p>
+      <div class="legend" id="legend"></div>
+    </section>
+
+    <aside class="panel">
+      <!-- 1. 地形・プレート -->
+      <div id="panelTerrain" class="pane">
+        <h2>地形とプレートを見る</h2>
+        <p class="lead">実在の地球のデータです。地図の種類を切り替えて、地形・大地形(安定陸塊と造山帯)・プレート境界の関係を確かめましょう。</p>
+        <div class="group">
+          <h3>読み取りのポイント</h3>
+          <ul class="points">
+            <li><b>狭まる境界</b>(赤): 海溝・弧状列島・新期造山帯ができる。環太平洋とアルプス=ヒマラヤの2本の帯。</li>
+            <li><b>広がる境界</b>(青): 海嶺・地溝帯。大西洋中央海嶺、アフリカ大地溝帯など。</li>
+            <li><b>ずれる境界</b>(黄): 横ずれ断層。サンアンドレアス断層など。</li>
+            <li><b>古期造山帯</b>はプレート境界から離れた低くなだらかな山地、<b>安定陸塊</b>は楯状地・卓状地。</li>
+          </ul>
+        </div>
+        <div class="group">
+          <h3>プレートと動き</h3>
+          <div id="plateList" class="plates"></div>
+          <p class="hint">向きと速さはプレート全体の平均。出典: Bird (2003) PB2002。</p>
+        </div>
+        <button type="button" class="btn primary wide" id="runClimate">気候を読む</button>
+      </div>
+
+      <!-- 2. 気候 -->
+      <div id="panelClimate" class="pane" hidden>
+        <h2>気候を読む</h2>
+        <p class="lead">地図をタップすると、その地点の雨温図とハイサーグラフ、気候区分の判定手順、植生・作物・家畜のデータが出ます。地図を「植生」「農業」に切り替えたり、海流や風を重ねたりして、気候との関係を確かめましょう。</p>
+        <div id="inspect"></div>
+        <details class="model" id="realNote">
+          <summary>このデータの出典(実在の地球)</summary>
+          <ul>
+            <li><b>標高・水深</b>: NOAA NCEI ETOPO 2022(氷床表面)</li>
+            <li><b>陸上の気温・降水量</b>: デラウェア大学 Air Temperature &amp; Precipitation v5.01(NOAA PSL 提供、1981〜2010年平均)</li>
+            <li><b>海面水温</b>: NOAA OI SST V2(1991〜2020年平均)</li>
+            <li><b>海上の降水量</b>: GPCP v2.3(1991〜2020年平均)</li>
+            <li><b>風</b>: NCEP/NCAR 再解析 地表付近(1991〜2020年平均)</li>
+            <li><b>海流</b>: NOAA GODAS 深さ5m(1991〜2020年平均)。暖流・寒流は、同緯度の海の平均水温との差(±1.2℃)と流れの向き(高緯度向き/低緯度向き)で色分け</li>
+            <li><b>プレート</b>: Bird (2003) PB2002。高校地理の主要プレートにまとめて表示</li>
+            <li><b>大地形</b>: Hasterok ほか (2022) Global geologic provinces の「最後の造山運動」を、新期・古期造山帯と安定陸塊に対応させたもの</li>
+            <li><b>植生</b>: ウィスコンシン大学 SAGE Global Potential Vegetation(Ramankutty &amp; Foley 1999)。人の手が入る前の潜在自然植生</li>
+            <li><b>作物</b>: MapSPAM 2020 V2r2 収穫面積(IFPRI)。オリーブと飼料作物だけ GAEZ+ 2015(Frolking ほか 2020)</li>
+            <li><b>家畜</b>: FAO Gridded Livestock of the World 2015(Gilbert ほか 2018)</li>
+            <li><b>農業形態</b>: FAO/ILRI Global livestock production systems v5(Robinson ほか 2011)。放牧中心/天水の耕作+家畜/灌漑の耕作+家畜/森林など/不適地 にまとめて表示</li>
+            <li><b>農業地域区分</b>: ホイットルセー(1936)の区分図の画像を位置合わせして1°格子に読み取ったもの。クイズの農業形態の正解はこれ。海岸沿いの細い区分は1〜2セルずれることがあります</li>
+            <li><b>現在のデータから判定した区分</b>: データセットではなく、上の作物・家畜・灌漑・気候のデータに規則をあてはめて判定した自作の区分。自給的か企業的かは地域(新大陸・モンスーンアジアなど)で代用しているので、教科書の地図と食い違う場所があります</li>
+          </ul>
+          <p class="hint">値は1°×1°(約100km四方)の平均なので、都市の観測値とは少しずれます。南極・グリーンランド内陸の気温はNCEP/NCAR再解析、降水はGPCPで補っています。ケッペンの区分は、この気温・降水量を教科書の判定法にあてはめた結果です。シミュレーションは使っていません。</p>
+        </details>
+        <details class="model">
+          <summary>農業地域区分の元の地図(ホイットルセー)</summary>
+          <p class="hint">「農業」の地図とクイズの農業形態は、この画像を1°格子に読み取ったものです。色は 黄=遊牧、薄桃=企業的牧畜、茶=焼畑、紫=粗放的定住、濃緑=集約的稲作、薄緑青=集約的畑作、赤=プランテーション、橙=地中海式、肌色=企業的穀物、黄緑=混合、オリーブ=自給的混合、水色=酪農、濃桃=園芸、灰=非農業。</p>
+          <img class="refmap" src="data/whittlesey.jpg" alt="ホイットルセーの農業地域区分の世界地図" loading="lazy">
+        </details>
+        <button type="button" class="btn primary wide" id="toQuiz">クイズを始める</button>
+      </div>
+
+      <!-- 3. クイズ -->
+      <div id="panelQuiz" class="pane" hidden>
+        <div class="quiz-head">
+          <h2>気候判定クイズ</h2>
+          <p class="score" id="scoreLine"></p>
+        </div>
+        <div class="row opts">
+          <div class="chips" id="qtypeChips" role="group" aria-label="クイズの形式">
+            <button type="button" class="chip" data-t="graph" aria-pressed="true">グラフから判定</button>
+            <button type="button" class="chip" data-t="map" aria-pressed="false">白地図の地点から判定</button>
+          </div>
+          <label class="check" id="showLocWrap"><input type="checkbox" id="showLoc"> 地点を地図に表示する(ヒント)</label>
+          <button type="button" class="btn ghost" id="reviewBtn">記録・分析</button>
+        </div>
+        <div id="quizBody"></div>
+      </div>
+    </aside>
+  </main>
+  <footer class="foot">NOAA・デラウェア大学・GPCP・FAO・SAGE などの公開データを1°格子に集計。ケッペンの区分は観測値を教科書の判定法(乾燥限界 r=20(t+x))にあてはめたもの。</footer>
+</div>
+
+<script src="data/earth.js"></script>
+<script src="js/core.js"></script>
+<script src="js/climate.js"></script>
+<script src="js/knowledge.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/review.js"></script>
+<script src="js/app.js"></script>
+<!--/body-->
+</body>
+</html>
