@@ -12,7 +12,7 @@
   const STATS_KEY = 'geo-quiz-stats-v2';
 
   /* ---------- 状態 ---------- */
-  const S = { world: null, sim: null, mode: 'terrain', layer: 'terrain', month: -1, agri: 'whit', inspect: -1, quiz: null, review: null, qtype: store.get('geo-quiz-type') === 'map' ? 'map' : 'graph', stats: store.get(STATS_KEY) || { n: 0, sum: 0, by: {} } };
+  const S = { world: null, sim: null, mode: 'terrain', layer: 'terrain', month: -1, agri: 'whit', inspect: -1, quiz: null, review: null, bags: {}, lastType: null, qtype: store.get('geo-quiz-type') === 'map' ? 'map' : 'graph', stats: store.get(STATS_KEY) || { n: 0, sum: 0, by: {} } };
   const cv = $('map'), ctx = cv.getContext('2d');
   const SC = 3, BW = W * SC, BH = H * SC; // 下絵は1セル(1°)=3px
   const base = document.createElement('canvas'); base.width = BW; base.height = BH;
@@ -369,18 +369,16 @@
     const sim = S.sim, by = {};
     for (let i = 0; i < N; i++) if (sim.kop[i] && sim.veg[i] && sim.whit[i] && Math.abs(latOf((i / W) | 0)) <= 82) (by[sim.kop[i]] = by[sim.kop[i]] || []).push(i);
     const types = Object.keys(by).filter(k => by[k].length >= 3);
-    // 苦手な区分を少し出やすくする
-    const wts = types.map(k => { const st = S.stats.by[k]; return st && st.n ? 1.6 - st.ok / st.n : 1.2; });
-    let r = Math.random() * wts.reduce((a, b) => a + b, 0), t = types[0];
-    for (let j = 0; j < types.length; j++) { r -= wts[j]; if (r <= 0) { t = types[j]; break; } }
-    let i;
-    if (S.qtype === 'map') { // 白地図: 陸上のランダムな点(面積に比例。緯度が高いほどセルが小さいので cos で重みづけ)
-      const cand = []; let tot = 0;
-      for (let j = 0; j < N; j++) if (sim.kop[j] && sim.veg[j] && sim.whit[j]) { tot += Math.cos(latOf((j / W) | 0) * Math.PI / 180); cand.push([j, tot]); }
-      const u = Math.random() * tot; let lo = 0, hi = cand.length - 1;
-      while (lo < hi) { const m = (lo + hi) >> 1; if (cand[m][1] < u) lo = m + 1; else hi = m; }
-      i = cand[lo][0];
-    } else { const cells = by[t]; i = cells[Math.floor(Math.random() * cells.length)]; }
+    // 気候区分をバランスよく: 全区分を1回ずつ並べた「袋」から順に引き、空になったら混ぜ直す(形式ごとに別の袋)
+    const bag = S.bags[S.qtype] = (S.bags[S.qtype] || []).filter(k => types.includes(k));
+    if (!bag.length) { for (const k of types) bag.splice(Math.floor(Math.random() * (bag.length + 1)), 0, k); if (bag.length > 1 && bag[bag.length - 1] === S.lastType) bag.reverse(); }
+    const t = S.lastType = bag.pop();
+    // その区分の中では面積に比例して選ぶ(緯度が高いほどセルが小さいので cos で重みづけ)
+    const cells = by[t], cum = []; let tot = 0;
+    for (const j of cells) { tot += Math.cos(latOf((j / W) | 0) * Math.PI / 180); cum.push(tot); }
+    const u = Math.random() * tot; let lo = 0, hi = cells.length - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < u) lo = m + 1; else hi = m; }
+    const i = cells[lo];
     PTS = PTS_ALL[S.qtype];
     S.quiz = { i, type: S.qtype, pd: pointData(i), ans: { elev: null, kop: null, veg: null, agri: null, crops: [] }, done: false };
     S.layer = S.qtype === 'map' ? 'blank' : layerAllowed(S.layer) ? S.layer : 'terrain';
