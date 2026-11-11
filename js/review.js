@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   const G = root.Geo, KEY = 'geo-quiz-log-v2', BLOCK = 50, MAX = 2000;
-  const ITEMS = [['elev', '標高'], ['kop', '気候区分'], ['veg', '植生'], ['land', '耕地の広がり'], ['crops', '作物・家畜']];
+  const ITEMS = [['elev', '標高'], ['kop', '気候区分'], ['veg', '植生'], ['agri', '農業形態'], ['land', '耕地の広がり'], ['crops', '作物・家畜']];
   let log = null;
   function all() {
     if (!log) { try { log = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { log = []; } if (!Array.isArray(log)) log = []; }
@@ -68,7 +68,7 @@
   /* ---- 表示 ---- */
   const pct = v => Math.round(v * 100);
   const bar = (v, cls) => `<span class="rbar"><i class="${cls || ''}" style="width:${Math.max(2, pct(v))}%"></i></span>`;
-  const nameOf = (k, key) => key === '(未回答)' ? key : k === 'elev' ? G.ELEV[key] : k === 'veg' ? G.VEG[key].name : k === 'land' ? G.LAND[key] : key === 'none' ? '該当なし' : G.CROPS[key] || G.STOCK[key];
+  const nameOf = (k, key) => key === '(未回答)' ? key : k === 'elev' ? G.ELEV[key] : k === 'veg' ? G.VEG[key].name : k === 'agri' ? G.AGRI[key].name : k === 'land' ? G.LAND[key] : key === 'none' ? '該当なし' : G.CROPS[key] || G.STOCK[key];
   const topOf = o => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([n, c]) => `${n}(${c}問)`).join(' / ');
   function report(es, prev, title) {
     if (!es.length) return '<p class="note">まだ記録がありません。クイズを解くと、ここに間違いの記録と傾向が出ます。</p>';
@@ -98,7 +98,7 @@
         weakRows.push(`<li><b>${n}・${c}</b> 得点率 ${pct(v)}%(${w.n}問)${wr ? `<br><span class="hint">選んだ誤答: ${wr}</span>` : ''}<br><span class="hint">この区分で多かった正解: ${topOf(w.right)}</span></li>`);
       }
     }
-    if (weakRows.length) h += `<h3>標高・植生・耕地・作物で落としている区分</h3><ul class="rlist">${weakRows.join('')}</ul>`;
+    if (weakRows.length) h += `<h3>標高・植生・農業形態・作物で落としている区分</h3><ul class="rlist">${weakRows.join('')}</ul>`;
     // 行動
     const acts = [];
     for (const [t, n] of errs.slice(0, 3)) if (n >= 2 || errs.length <= 2) acts.push(`<b>${ERR[t][0]}(${n}問)</b>: ${ERR[t][1]}`);
@@ -115,7 +115,7 @@
     const rows = es.map((e, j) => [e, offset + j + 1]).filter(([e]) => e.total < 100).reverse().slice(0, 50);
     if (!rows.length) return '';
     const m = v => v >= 1 ? '○' : v > 0 ? '△' : '×';
-    return `<h3>間違えた問題の記録(新しい順・最大50件)</h3><div class="tablewrap"><table class="months rlog"><tr><th>問</th><th>形式</th><th>正解</th><th>回答</th><th>植生</th><th>耕地</th><th>作物</th><th>点</th><th>位置</th><th>標高</th></tr>${rows.map(([e, n]) => `<tr><td>${n}</td><td>${e.type === 'map' ? '白地図' : 'グラフ'}</td><td>${e.code}</td><td class="${e.r.kop === 1 ? '' : 'ng'}">${e.a.kop || '—'}</td><td>${m(e.r.veg)}</td><td>${m(e.r.land)}</td><td>${m(e.r.crops)}</td><td>${e.total}</td><td>${Math.abs(e.lat)}°${e.lat >= 0 ? 'N' : 'S'} ${e.lon != null ? Math.abs(e.lon) + '°' + (e.lon >= 0 ? 'E' : 'W') : ''}</td><td>${Math.round(e.elev / 10) * 10}</td></tr>`).join('')}</table></div>`;
+    return `<h3>間違えた問題の記録(新しい順・最大50件)</h3><div class="tablewrap"><table class="months rlog"><tr><th>問</th><th>形式</th><th>正解</th><th>回答</th><th>植生</th><th>農業</th><th>作物</th><th>点</th><th>位置</th><th>標高</th></tr>${rows.map(([e, n]) => `<tr><td>${n}</td><td>${e.type === 'map' ? '白地図' : 'グラフ'}</td><td>${e.code}</td><td class="${e.r.kop === 1 ? '' : 'ng'}">${e.a.kop || '—'}</td><td>${m(e.r.veg)}</td><td>${m(e.r.agri !== undefined ? e.r.agri : e.r.land)}</td><td>${m(e.r.crops)}</td><td>${e.total}</td><td>${Math.abs(e.lat)}°${e.lat >= 0 ? 'N' : 'S'} ${e.lon != null ? Math.abs(e.lon) + '°' + (e.lon >= 0 ? 'E' : 'W') : ''}</td><td>${Math.round(e.elev / 10) * 10}</td></tr>`).join('')}</table></div>`;
   }
   // sel: 'all' | 'now' | 数字(第n回)
   function render(box, sel, onChange) {

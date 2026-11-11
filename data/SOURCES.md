@@ -1,6 +1,6 @@
 # 地球(実データ)の出典
 
-`data/earth.js` は下のデータを 1°×1°(360×180)に集計して gzip 圧縮したもの。`tools/build_earth_data.py <フォルダ>` で再生成できる(要 numpy, netCDF4, rasterio, pyshp)。取得日: 2026-11-11。
+`data/earth.js` は下のデータを 1°×1°(360×180)に集計して gzip 圧縮したもの。`tools/build_earth_data.py <フォルダ>` で再生成できる(要 numpy, netCDF4, rasterio, pyshp。農業形態の7zの展開に py7zr)。取得日: 2026-11-11。
 
 | 内容 | データセット | 提供機関 | 期間 | 入手先(保存ファイル名) |
 | --- | --- | --- | --- | --- |
@@ -16,6 +16,7 @@
 | 大地形(造山帯・安定陸塊) | Global geologic provinces (Hasterok et al. 2022, Earth-Science Reviews, doi:10.1016/j.earscirev.2022.104069) | アデレード大学 | — | `https://raw.githubusercontent.com/dhasterok/global_tectonics/main/plates%26provinces/shp/global_gprv.{shp,dbf,shx}` (`gprv.*`) |
 | 植生(潜在自然植生) | Global Potential Vegetation Dataset, 5分 (Ramankutty & Foley 1999, Global Biogeochem. Cycles) | ウィスコンシン大学 SAGE | — | `https://sage-public-files.s3.amazonaws.com/global-potential-vegetation/glpotveg_5min.asc.gz` (`potveg.asc.gz`) |
 | 作物の収穫面積(26区分) | GAEZ+ 2015 Crop Harvest Area (Frolking et al. 2020, doi:10.7910/DVN/KAGRFI, CC0)。FAO/IIASA GAEZ v4 にもとづく | ニューハンプシャー大学 / Harvard Dataverse | 2015年ごろ | Harvard Dataverse の `GAEZAct2015_HarvArea_<作物>_Total.tif` (`gaez/<作物>.tif`) |
+| 農業形態 | Global distribution of ruminant livestock production systems V5 (Robinson et al. 2011; FAO/ILRI, doi:10.7910/DVN/WPDSZE, CC0) | FAO / ILRI / Harvard Dataverse | 2010年ごろ | `2_GlobalRuminantLPS_GIS.7z` を展開 (`lps/glps_gleam_61113_10km.tif`) |
 | 家畜(牛・羊・ヤギ・豚) | Gridded Livestock of the World 2015, GLW 4 (Gilbert et al. 2018, Scientific Data)。doi:10.7910/DVN/LHBICE, VZOYHM, YYG6ET, CIVCPB | FAO / ブリュッセル自由大学 / Harvard Dataverse | 2015年 | 各データセットの `5_*_2015_Da.tif` (`cattle.tif` `sheep.tif` `goats.tif` `pigs.tif`) |
 
 ## 加工の内容
@@ -27,8 +28,9 @@
 - **ケッペンの気候区分**: 上の気温・降水量を教科書の判定法(乾燥限界 r=20(t+x))にあてはめた結果(既存の気候区分図を読み込んだものではない)。標高2000m以上は高山気候(H)。
 - **植生**: 5分格子144点のうち最も多い区分をそのセルの植生、25%以上を占める2番目の区分を「一部」とした。データのある点が1/4未満のセル(南極など)は「データなし」。
 - **作物**: 5分格子の収穫面積(1000ha)を1°セルで合計し、セル面積に対する割合にした。二期作などは重複して数えるので、合計が100%を超えるセルがある。コーヒー・茶・カカオは元データで1区分(Stimulants)、果樹・ゴムなどは「その他の作物」にまとめられている。
+- **農業形態**: 元データの15区分を、放牧中心(LGY/LGA/LGH/LGT)・天水の耕作+家畜(MRY/MRA/MRH/MRT)・灌漑の耕作+家畜(MIY/MIA/MIH/MIT)・森林など(Other)・不適地 の5つにまとめた(都市は数えない)。5分格子144点で最も多い型をそのセルの農業形態、25%以上を占める2番目を「一部」とした。ホイットルセーの農業地域区分(遊牧・混合農業・地中海式農業など)のデジタルデータは公開されているものが見つからなかったため、これを使っている。
 - **家畜**: 5分格子の頭数を1°セルで合計し、セル面積で割った密度(頭/km²)。
 - **大地形**: 元データの「最後の造山運動(lastorogen)」を次のように対応させた。新期造山帯 = Cordilleran, Alpine-Himalayan, Antilles。古期造山帯 = Caledonian, Variscan-Hercynian, Uralian, Tasmanides, Kazakh, Mongol, Indo-Sinian, Scotian。それ以外の大陸地殻 = 安定陸塊。加えて、PB2002 の狭まる境界から1°以内の陸地は新期造山帯とした。この対応づけは本アプリ独自のもの。
-- **クイズの正解**: 植生はセルの植生区分。耕地の広がりは収穫面積の合計(1%・10%・35%で4段階)。作物は収穫面積の上位3つ(0.5%以上)、家畜は密度が基準(牛・羊・ヤギ15頭/km²、豚20頭/km²)以上のもの。しきい値は本アプリで決めたもの。
+- **クイズの正解**: 植生・農業形態はセルで最も広い区分(2番目に広い区分は半分の点)。作物は収穫面積の上位3つ(0.5%以上)、家畜は密度が基準(牛・羊・ヤギ15頭/km²、豚20頭/km²)以上のもの。しきい値は本アプリで決めたもの。
 
 1°セル(約100km四方)の平均なので、個々の都市の観測値とは一致しない(山がちな地域では標高が平均され、気温が低めになる)。

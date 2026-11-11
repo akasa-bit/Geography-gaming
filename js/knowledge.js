@@ -51,6 +51,15 @@
   const STOCK_MIN = { cattle: 15, sheep: 15, goats: 15, pigs: 20 }; // 「多い」とみなす密度(頭/km²)
   // 耕地の広がり: 全作物の収穫面積の合計がセル面積に占める割合(二期作などは重複して数える)
   const LAND = { 0: 'ほとんど耕作されていない(1%未満)', 1: '耕地が点在する(1〜10%)', 2: '耕地が多い(10〜35%)', 3: '大部分が耕地(35%以上)' };
+  // 農業形態: FAO/ILRI Global livestock production systems v5 の区分をまとめたもの。番号はデータの値
+  const AGRI = {
+    1: { name: '放牧中心', sub: '草地で家畜だけを飼う。遊牧・企業的牧畜など', color: '#e0b060' },
+    2: { name: '天水の耕作+家畜', sub: '雨にたよる畑作と家畜飼育の組み合わせ。混合農業・畑作など', color: '#86c06c' },
+    3: { name: '灌漑の耕作+家畜', sub: '灌漑による耕作と家畜飼育。稲作・オアシス農業など', color: '#2f8fb0' },
+    4: { name: '森林など(農牧業はわずか)', sub: '森林・湿地におおわれ、農牧業がほとんどない', color: '#3f7f5a' },
+    5: { name: '農牧業に不適', sub: '氷雪・水域など', color: '#dfe3e6' }
+  };
+  const AGRI_ORDER = [1, 2, 3, 4, 5];
   // 標高の区分(白地図クイズ用)
   const ELEV = ['0〜50m', '50〜500m', '500〜1000m', '1000〜2000m', '2000m〜'];
   const elevClass = e => e < 50 ? 0 : e < 500 ? 1 : e < 1000 ? 2 : e < 2000 ? 3 : 4;
@@ -80,6 +89,6 @@
     ET: 'ツンドラ土: 低温で分解が進まない強酸性の土壌。地下は永久凍土。', EF: '氷雪に覆われ土壌は発達しない。', H: '標高により変化する(高山土)。'
   };
 
-  const API = { KOPPEN, KOPPEN_ORDER, VEG, VEG_ORDER, CROPS, STOCK, STOCK_MIN, LAND, landClass, ELEV, elevClass, AGRI_NOTE, SOIL_NOTE };
+  const API = { KOPPEN, KOPPEN_ORDER, VEG, VEG_ORDER, CROPS, STOCK, STOCK_MIN, LAND, landClass, ELEV, elevClass, AGRI, AGRI_ORDER, AGRI_NOTE, SOIL_NOTE };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.Geo = API;
 })(typeof window !== 'undefined' ? window : globalThis);

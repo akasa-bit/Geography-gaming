@@ -50,7 +50,7 @@
   /* ---- 観測データ → 表示・出題用のデータ ---- */
   function build(world, E) {
     const land = new Uint8Array(N); for (let i = 0; i < N; i++) land[i] = world.elev[i] > 0 ? 1 : 0;
-    const D = { land, T: [], P: [], wu: [], wv: [], tAnn: new Float32Array(N), pAnn: new Float32Array(N), kop: new Array(N), veg: E.veg, veg2: E.veg2,
+    const D = { land, T: [], P: [], wu: [], wv: [], tAnn: new Float32Array(N), pAnn: new Float32Array(N), kop: new Array(N), veg: E.veg, veg2: E.veg2, agri: E.lps, agri2: E.lps2,
       cu: new Float32Array(N), cv: new Float32Array(N), sstA: new Float32Array(N), ckind: new Int8Array(N), coastD: Core.distField(land.map(v => 1 - v)),
       crop: [], stock: [], cropAll: new Float32Array(N), cropNames: E.cropNames, stockNames: E.stockNames };
     for (let m = 0; m < 12; m++) {

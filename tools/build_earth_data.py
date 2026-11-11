@@ -5,7 +5,7 @@
 必要なファイル(入手先は data/SOURCES.md):
   etopo2022.txt  udel_air.nc  udel_precip.nc  oisst.nc  air2m.nc  gpcp.nc
   uwnd.nc  vwnd.nc  ucur.txt  vcur.txt  pb_plates.txt  pb_poles.txt
-  potveg.asc.gz  gaez/<作物>.tif  cattle.tif sheep.tif goats.tif pigs.tif  gprv.shp/.dbf/.shx
+  potveg.asc.gz  lps/glps_gleam_61113_10km.tif  gaez/<作物>.tif  cattle.tif sheep.tif goats.tif pigs.tif  gprv.shp/.dbf/.shx
 """
 import base64, gzip, json, math, os, re, sys
 import numpy as np
@@ -244,6 +244,22 @@ STOCK = ['cattle', 'sheep', 'goats', 'pigs']
 stock = np.stack([tif5(R + n + '.tif') / cell_km2[:, None] for n in STOCK])      # 頭/km²
 print('家畜の世界合計(億頭):', {n: round(float((stock[k] * cell_km2[:, None]).sum() / 1e8), 2) for k, n in enumerate(STOCK)})
 
+# ---------- 農業形態: FAO/ILRI Global livestock production systems v5 (Robinson et al. 2011/2018), 5分格子 ----------
+# 元の15区分を 1=放牧中心(LG) 2=天水の混合農業(MR) 3=灌漑の混合農業(MI) 4=森林など(Other) 5=不適地 にまとめる。都市は数えない
+with rasterio.open(R + 'lps/glps_gleam_61113_10km.tif') as d:
+    lp = d.read(1); assert lp.shape == (2160, 4320)
+GRP = np.array([0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 0, 4, 5], dtype=np.uint8)
+lg = GRP[lp].reshape(H, 12, W, 12).transpose(0, 2, 1, 3).reshape(H, W, 144)
+lps = np.zeros((H, W), dtype=np.uint8); lps2 = np.zeros((H, W), dtype=np.uint8)
+for y in range(H):
+    for x in range(W):
+        v = lg[y, x]; v = v[v > 0]
+        if len(v) < 36: continue
+        c = np.bincount(v, minlength=6); o = np.argsort(-c)
+        lps[y, x] = o[0]
+        if c[o[1]] >= 0.25 * len(v): lps2[y, x] = o[1]
+print('農業形態(陸セル) なし/放牧/天水混合/灌漑混合/森林など/不適地', np.bincount(lps[land].ravel(), minlength=6).tolist())
+
 # ---------- 大地形: Hasterok et al. (2022) Global geologic provinces ----------
 # 最後の造山運動(lastorogen)を高校地理の3区分に対応させる。1=新期造山帯 2=古期造山帯 0=安定陸塊(その他の大陸地殻)・海洋
 NEW = {'Cordilleran', 'Alpine-Himalayan', 'Antilles'}
@@ -278,7 +294,7 @@ fields = [
     ('wu', 'i1', np.clip(np.round(wu * 10), -127, 127)), ('wv', 'i1', np.clip(np.round(wv * 10), -127, 127)),       # 0.1 m/s
     ('cu', 'i1', np.clip(np.round(cu * 200), -127, 127)), ('cv', 'i1', np.clip(np.round(cv * 200), -127, 127)),     # 0.5 cm/s
     ('sstA', 'i1', np.clip(np.round(sst_anom * 10), -127, 127)),     # 0.1 ℃
-    ('veg', 'u1', veg), ('veg2', 'u1', veg2), ('oro', 'u1', oro),
+    ('veg', 'u1', veg), ('veg2', 'u1', veg2), ('oro', 'u1', oro), ('lps', 'u1', lps), ('lps2', 'u1', lps2),
     ('crop', 'u1', np.clip(np.round(np.sqrt(crop_frac) * 255), 0, 255)),      # 割合 = (値/255)², [作物][y][x]
     ('stock', 'u1', np.clip(np.round(np.sqrt(stock) * 8), 0, 255)),           # 頭/km² = (値/8)², [家畜][y][x]
 ]
@@ -307,8 +323,8 @@ def cell(la_, lo_):
 def show(nm, la_, lo_):
     y, x = cell(la_, lo_)
     top = sorted([(crop_frac[k, y, x], CROPS[k]) for k in range(len(CROPS))], reverse=True)[:3]
-    print(f'{nm}: 植生{veg[y, x]}/{veg2[y, x]} 大地形{oro[y, x]} 作物' + ' '.join(f'{n}{v * 100:.1f}%' for v, n in top) + ' 家畜(頭/km²)' + ' '.join(f'{n}{stock[k, y, x]:.0f}' for k, n in enumerate(STOCK)))
-for nm, la_, lo_ in [('東京', 35.7, 139.7), ('アイオワ', 42, -93.5), ('パンジャブ', 30.5, 75.5), ('マナオス', -3, -60), ('ニジェール内陸', 14, 8), ('ウラル', 58, 59.5), ('アルプス', 46.5, 10), ('NZ南島', -44.5, 170.5)]:
+    print(f'{nm}: 植生{veg[y, x]}/{veg2[y, x]} 農業形態{lps[y, x]}/{lps2[y, x]} 大地形{oro[y, x]} 作物' + ' '.join(f'{n}{v * 100:.1f}%' for v, n in top) + ' 家畜(頭/km²)' + ' '.join(f'{n}{stock[k, y, x]:.0f}' for k, n in enumerate(STOCK)))
+for nm, la_, lo_ in [('モンゴル', 46.5, 103.5), ('ナイル河口', 30.5, 31.5), ('アイオワ', 42, -93.5), ('パンジャブ', 30.5, 75.5), ('マナオス', -3, -60), ('ニジェール内陸', 14, 8), ('ウラル', 58, 59.5), ('アルプス', 46.5, 10), ('NZ南島', -44.5, 170.5)]:
     show(nm, la_, lo_)
 for nm, la_, lo_ in [('東京', 35.7, 139.7), ('ロンドン', 51.5, -0.1), ('シンガポール', 1.3, 103.8), ('カイロ', 30, 31.2), ('モスクワ', 55.8, 37.6), ('ローマ', 41.9, 12.5), ('ヤクーツク', 62, 129.7), ('ブエノスアイレス', -34.6, -58.4), ('ラサ', 29.7, 91.1), ('昭和基地付近', -70, 40)]:
     y, x = cell(la_, lo_)
