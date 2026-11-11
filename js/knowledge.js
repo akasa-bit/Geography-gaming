@@ -51,6 +51,9 @@
   const STOCK_MIN = { cattle: 15, sheep: 15, goats: 15, pigs: 20 }; // 「多い」とみなす密度(頭/km²)
   // 耕地の広がり: 全作物の収穫面積の合計がセル面積に占める割合(二期作などは重複して数える)
   const LAND = { 0: 'ほとんど耕作されていない(1%未満)', 1: '耕地が点在する(1〜10%)', 2: '耕地が多い(10〜35%)', 3: '大部分が耕地(35%以上)' };
+  // 標高の区分(白地図クイズ用)
+  const ELEV = ['0〜50m', '50〜500m', '500〜1000m', '1000〜2000m', '2000m〜'];
+  const elevClass = e => e < 50 ? 0 : e < 500 ? 1 : e < 1000 ? 2 : e < 2000 ? 3 : 4;
   const landClass = f => f < 0.01 ? 0 : f < 0.10 ? 1 : f < 0.35 ? 2 : 3;
 
   const AGRI_NOTE = {
@@ -77,6 +80,6 @@
     ET: 'ツンドラ土: 低温で分解が進まない強酸性の土壌。地下は永久凍土。', EF: '氷雪に覆われ土壌は発達しない。', H: '標高により変化する(高山土)。'
   };
 
-  const API = { KOPPEN, KOPPEN_ORDER, VEG, VEG_ORDER, CROPS, STOCK, STOCK_MIN, LAND, landClass, AGRI_NOTE, SOIL_NOTE };
+  const API = { KOPPEN, KOPPEN_ORDER, VEG, VEG_ORDER, CROPS, STOCK, STOCK_MIN, LAND, landClass, ELEV, elevClass, AGRI_NOTE, SOIL_NOTE };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.Geo = API;
 })(typeof window !== 'undefined' ? window : globalThis);

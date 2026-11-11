@@ -105,7 +105,11 @@
           <p class="score" id="scoreLine"></p>
         </div>
         <div class="row opts">
-          <label class="check"><input type="checkbox" id="showLoc"> 地点を地図に表示する(ヒント)</label>
+          <div class="chips" id="qtypeChips" role="group" aria-label="クイズの形式">
+            <button type="button" class="chip" data-t="graph" aria-pressed="true">グラフから判定</button>
+            <button type="button" class="chip" data-t="map" aria-pressed="false">白地図の地点から判定</button>
+          </div>
+          <label class="check" id="showLocWrap"><input type="checkbox" id="showLoc"> 地点を地図に表示する(ヒント)</label>
           <button type="button" class="btn ghost" id="reviewBtn">記録・分析</button>
         </div>
         <div id="quizBody"></div>

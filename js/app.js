@@ -12,7 +12,7 @@
   const STATS_KEY = 'geo-quiz-stats-v2';
 
   /* ---------- 状態 ---------- */
-  const S = { world: null, sim: null, mode: 'terrain', layer: 'terrain', month: -1, agri: 'all', inspect: -1, quiz: null, review: null, stats: store.get(STATS_KEY) || { n: 0, sum: 0, by: {} } };
+  const S = { world: null, sim: null, mode: 'terrain', layer: 'terrain', month: -1, agri: 'all', inspect: -1, quiz: null, review: null, qtype: store.get('geo-quiz-type') === 'map' ? 'map' : 'graph', stats: store.get(STATS_KEY) || { n: 0, sum: 0, by: {} } };
   const cv = $('map'), ctx = cv.getContext('2d');
   const SC = 3, BW = W * SC, BH = H * SC; // 下絵は1セル(1°)=3px
   const base = document.createElement('canvas'); base.width = BW; base.height = BH;
@@ -46,7 +46,8 @@
   const B_COL = { 1: '#e02d2d', 2: '#1d6fe0', 3: '#e0a81d' };
   const LF = { 0: ['安定陸塊', '#e3d6a4'], 1: ['新期造山帯', '#c9503a'], 2: ['古期造山帯', '#6f9a58'] };
   const LFC = [hex(LF[0][1]), hex(LF[1][1]), hex(LF[2][1])];
-  const BASIC = ['terrain', 'landform', 'plates'];
+  const BASIC = ['terrain', 'landform', 'plates', 'blank'];
+  const mapQuizOpen = () => S.mode === 'quiz' && S.quiz && !S.quiz.done && S.quiz.type === 'map'; // 白地図クイズの出題中
   const agriField = () => { const d = S.sim, k = d.cropNames.indexOf(S.agri), j = d.stockNames.indexOf(S.agri); return k >= 0 ? [d.crop[k], false] : j >= 0 ? [d.stock[j], true] : [d.cropAll, false]; };
 
   /* ---------- 地図の描画 ---------- */
@@ -70,7 +71,8 @@
         const sh = land ? clamp(1 + ((e[i00] + e[i01]) - (e[i10] + e[i11]) + (e[i00] + e[i10]) - (e[i01] + e[i11])) / 6000, 0.72, 1.22) : 1;
         const flat = 0.9 + (sh - 1) * 0.5;
         let c;
-        if (layer === 'terrain') { c = land ? cLand(ev) : cSea(ev); c = [c[0] * sh, c[1] * sh, c[2] * sh]; }
+        if (layer === 'blank') c = land ? [251, 250, 245] : [205, 225, 236]; // 白地図
+        else if (layer === 'terrain') { c = land ? cLand(ev) : cSea(ev); c = [c[0] * sh, c[1] * sh, c[2] * sh]; }
         else if (layer === 'plates') {
           const g = land ? 205 * sh : 150 + clamp(ev / 7000, -1, 0) * 50, p = pc[w.plate[near]] || [128, 128, 128];
           c = [g * 0.45 + p[0] * 0.55, g * 0.45 + p[1] * 0.55, g * 0.45 + p[2] * 0.55];
@@ -174,7 +176,7 @@
         arrow(cx(x) - u * s / 2, cy(y) + v * s / 2, u * s, -v * s, 'rgba(20,20,30,0.82)', 1.4);
       }
     }
-    const mark = S.mode === 'quiz' ? (S.quiz && (S.quiz.done || $('showLoc').checked) ? S.quiz.i : -1) : S.mode === 'climate' ? S.inspect : -1;
+    const mark = S.mode === 'quiz' ? (S.quiz && (S.quiz.done || S.quiz.type === 'map' || $('showLoc').checked) ? S.quiz.i : -1) : S.mode === 'climate' ? S.inspect : -1;
     if (mark >= 0) pin(cx(mark % W), cy((mark / W) | 0));
   }
   function refresh() { renderBase(); draw(); legend(); }
@@ -186,6 +188,7 @@
     const bl = `<span class="item"><span class="ln" style="border-color:${B_COL[1]}"></span>狭まる境界</span><span class="item"><span class="ln" style="border-color:${B_COL[2]}"></span>広がる境界</span><span class="item"><span class="ln" style="border-color:${B_COL[3]}"></span>ずれる境界</span>`;
     const lay = S.layer; let h = '';
     if (lay === 'terrain') h = `<span class="ramp">深海<i style="background:linear-gradient(90deg,${R_SEA.map(s => s[1]).join(',')},${R_LAND.map(s => s[1]).join(',')})"></i>高山(標高)</span>`;
+    else if (lay === 'blank') h = '<span class="item">白地図(海岸線と緯線のみ)</span>';
     else if (lay === 'plates') h = bl;
     else if (lay === 'landform') h = [0, 1, 2].map(k => sw(LF[k][1], LF[k][0])).join('') + bl;
     else if (lay === 'temp') h = rampH(R_TEMP, '℃', v => v);
@@ -199,8 +202,9 @@
   }
 
   /* ---------- 地図の種類 ---------- */
-  const LAYERS = [['terrain', '地形'], ['landform', '大地形'], ['plates', 'プレート'], ['temp', '気温'], ['precip', '降水量'], ['koppen', 'ケッペン'], ['veg', '植生'], ['agri', '農業']];
-  const layerAllowed = k => BASIC.includes(k) || !(S.mode === 'quiz' && S.quiz && !S.quiz.done); // 出題中は答えが見える地図を隠す
+  const LAYERS = [['blank', '白地図'], ['terrain', '地形'], ['landform', '大地形'], ['plates', 'プレート'], ['temp', '気温'], ['precip', '降水量'], ['koppen', 'ケッペン'], ['veg', '植生'], ['agri', '農業']];
+  // 出題中は答えが見える地図を隠す。白地図クイズでは白地図だけ
+  const layerAllowed = k => mapQuizOpen() ? k === 'blank' : BASIC.includes(k) || !(S.mode === 'quiz' && S.quiz && !S.quiz.done);
   function buildLayerChips() {
     const box = $('layerChips'); box.innerHTML = '';
     for (const [k, name] of LAYERS) {
@@ -210,6 +214,8 @@
       box.appendChild(b);
     }
     $('agriWrap').hidden = S.layer !== 'agri';
+    $('ovCurrent').disabled = $('ovWind').disabled = mapQuizOpen();
+    if (mapQuizOpen()) $('ovCurrent').checked = $('ovWind').checked = false;
   }
 
   /* ---------- モード切り替え ---------- */
@@ -219,7 +225,7 @@
     $('panelTerrain').hidden = mode !== 'terrain'; $('panelClimate').hidden = mode !== 'climate'; $('panelQuiz').hidden = mode !== 'quiz';
     if (mode === 'terrain' && !BASIC.includes(S.layer)) S.layer = 'terrain';
     if (mode === 'climate') { if (BASIC.includes(S.layer)) S.layer = 'koppen'; if (S.inspect < 0) S.inspect = pickDefaultPoint(); renderInspect(); }
-    if (mode === 'quiz') { if (!S.quiz) newQuestion(); else renderQuiz(); if (!layerAllowed(S.layer)) S.layer = 'terrain'; }
+    if (mode === 'quiz') { if (!S.quiz) newQuestion(); else renderQuiz(); if (!layerAllowed(S.layer)) S.layer = mapQuizOpen() ? 'blank' : 'terrain'; }
     buildLayerChips(); refresh();
   }
   function pickDefaultPoint() {
@@ -248,6 +254,7 @@
   const posText = (la, lo) => `${Math.abs(la)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo)}°${lo >= 0 ? 'E' : 'W'}`;
   function readout(gx, gy) {
     const i = gy * W + gx, w = S.world, sim = S.sim;
+    if (mapQuizOpen()) { $('readout').textContent = posText(latOf(gy), lonOf(gx)); return; } // 標高などは答えになるので出さない
     let t = `${posText(latOf(gy), lonOf(gx))} ・ ${w.elev[i] > 0 ? '標高' : '水深'} ${Math.abs(Math.round(w.elev[i] / 10) * 10)} m ・ ${w.plates[w.plate[i]] ? w.plates[w.plate[i]].name : ''}${w.elev[i] > 0 ? ' ・ ' + LF[w.oro[i] || 0][0] : ''}`;
     if (layerAllowed('koppen')) {
       const m = S.month;
@@ -265,7 +272,7 @@
     const y = (i / W) | 0, lat = latOf(y), k = Climate.koppen(t, p, lat, S.world.elev[i]);
     const crops = sim.cropNames.map((n, j) => ({ key: n, v: sim.crop[j][i] })).filter(c => c.v >= 0.002).sort((a, b) => b.v - a.v);
     const stock = sim.stockNames.map((n, j) => ({ key: n, v: sim.stock[j][i] }));
-    return { i, t, p, lat, lon: lonOf(i % W), elev: S.world.elev[i], k, veg: sim.veg[i], veg2: sim.veg2[i], oro: S.world.oro[i] || 0, cropAll: sim.cropAll[i], land: G.landClass(sim.cropAll[i]), crops, stock };
+    return { i, t, p, lat, lon: lonOf(i % W), elev: S.world.elev[i], band: G.elevClass(S.world.elev[i]), k, veg: sim.veg[i], veg2: sim.veg2[i], oro: S.world.oro[i] || 0, cropAll: sim.cropAll[i], land: G.landClass(sim.cropAll[i]), crops, stock };
   }
   const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
   const pc1 = v => (v * 100).toFixed(v < 0.1 ? 1 : 0) + '%';
@@ -346,7 +353,8 @@
   }
 
   /* ---------- 3. クイズ ---------- */
-  const PTS = { kop: 40, veg: 20, land: 15, crops: 25 };
+  const PTS_ALL = { graph: { kop: 40, veg: 20, land: 15, crops: 25 }, map: { elev: 15, kop: 35, veg: 20, land: 10, crops: 20 } };
+  let PTS = PTS_ALL.graph;
   const CROP_OPTS = Object.keys(G.CROPS).concat(Object.keys(G.STOCK), ['none']);
   const cropName = k => k === 'none' ? '該当なし' : G.CROPS[k] || G.STOCK[k];
   function newQuestion() {
@@ -357,9 +365,17 @@
     const wts = types.map(k => { const st = S.stats.by[k]; return st && st.n ? 1.6 - st.ok / st.n : 1.2; });
     let r = Math.random() * wts.reduce((a, b) => a + b, 0), t = types[0];
     for (let j = 0; j < types.length; j++) { r -= wts[j]; if (r <= 0) { t = types[j]; break; } }
-    const cells = by[t], i = cells[Math.floor(Math.random() * cells.length)];
-    S.quiz = { i, pd: pointData(i), ans: { kop: null, veg: null, land: null, crops: [] }, done: false };
-    if (!layerAllowed(S.layer)) S.layer = 'terrain';
+    let i;
+    if (S.qtype === 'map') { // 白地図: 陸上のランダムな点(面積に比例。緯度が高いほどセルが小さいので cos で重みづけ)
+      const cand = []; let tot = 0;
+      for (let j = 0; j < N; j++) if (sim.kop[j] && sim.veg[j]) { tot += Math.cos(latOf((j / W) | 0) * Math.PI / 180); cand.push([j, tot]); }
+      const u = Math.random() * tot; let lo = 0, hi = cand.length - 1;
+      while (lo < hi) { const m = (lo + hi) >> 1; if (cand[m][1] < u) lo = m + 1; else hi = m; }
+      i = cand[lo][0];
+    } else { const cells = by[t]; i = cells[Math.floor(Math.random() * cells.length)]; }
+    PTS = PTS_ALL[S.qtype];
+    S.quiz = { i, type: S.qtype, pd: pointData(i), ans: { elev: null, kop: null, veg: null, land: null, crops: [] }, done: false };
+    S.layer = S.qtype === 'map' ? 'blank' : layerAllowed(S.layer) ? S.layer : 'terrain';
     renderQuiz(); buildLayerChips(); refresh();
   }
   function chipGroup(id, items, sel, multi, onPick) {
@@ -376,15 +392,21 @@
     renderScore();
     const q = S.quiz, body = $('quizBody');
     $('reviewBtn').textContent = S.review ? 'クイズに戻る' : '記録・分析';
+    for (const b of document.querySelectorAll('#qtypeChips .chip')) b.setAttribute('aria-pressed', b.dataset.t === S.qtype);
+    $('showLocWrap').hidden = S.qtype === 'map';
     if (S.review) return renderReview();
     if (!q) return;
     if (q.done) return renderResult();
-    const pd = q.pd, showLoc = $('showLoc').checked;
+    const pd = q.pd, showLoc = $('showLoc').checked, isMap = q.type === 'map';
+    PTS = PTS_ALL[q.type];
     body.innerHTML = '';
-    body.appendChild(el('div', { class: 'block' }, `<p class="lead">実在の地球の、ある地点(1°四方の平均)の観測値です${showLoc ? '。地図のピンがその場所' : ''}。グラフを読み取り、気候区分・植生・耕地の広がり・作物を答えましょう。</p>${chartsHTML(pd)}${factsHTML(pd, showLoc)}`));
+    body.appendChild(el('div', { class: 'block' }, isMap
+      ? '<p class="lead">白地図のピンの地点(実在の地球、1°四方の平均)について、標高・気候区分・植生・耕地の広がり・作物を答えましょう。手がかりは位置だけです。</p>'
+      : `<p class="lead">実在の地球の、ある地点(1°四方の平均)の観測値です${showLoc ? '。地図のピンがその場所' : ''}。グラフを読み取り、気候区分・植生・耕地の広がり・作物を答えましょう。</p>${chartsHTML(pd)}${factsHTML(pd, showLoc)}`));
     const mk = (title, pts, node, hint) => { const d = el('div', { class: 'q' }, `<h3>${title}<span>${pts}点</span></h3>${hint ? `<p class="hint">${hint}</p>` : ''}`); d.appendChild(node); body.appendChild(d); };
     const toggle = (c, k) => { const j = c.indexOf(k); if (j >= 0) c.splice(j, 1); else { if (c.length >= 3) c.shift(); c.push(k); } };
     const rerender = () => { const y = window.scrollY; renderQuiz(); window.scrollTo(0, y); };
+    if (isMap) mk('標高', PTS.elev, chipGroup('qElev', G.ELEV.map((n, k) => [k, n]), q.ans.elev, false, k => { q.ans.elev = k; rerender(); }), '1°四方の平均標高。');
     mk('気候区分', PTS.kop, chipGroup('qKop', G.KOPPEN_ORDER.map(k => [k, `<span class="code">${k}</span>${G.KOPPEN[k].name.replace(/\(.*\)/, '')}`]), q.ans.kop, false, k => { q.ans.kop = k; rerender(); }));
     mk('植生', PTS.veg, chipGroup('qVeg', G.VEG_ORDER.map(k => [k, G.VEG[k].name]), q.ans.veg, false, k => { q.ans.veg = k; rerender(); }), '人の手が入る前の植生(潜在自然植生)で最も広いもの。');
     mk('耕地の広がり', PTS.land, chipGroup('qLand', [0, 1, 2, 3].map(k => [k, G.LAND[k]]), q.ans.land, false, k => { q.ans.land = k; rerender(); }), '作物の収穫面積の合計が、土地に占める割合。');
@@ -394,7 +416,7 @@
     const skip = el('button', { type: 'button', class: 'btn ghost', id: 'skipQuiz' }, '別の地点にする'); skip.onclick = newQuestion;
     row.append(sub, skip); body.appendChild(row);
     if (!q.ans.kop) body.appendChild(el('p', { class: 'hint' }, '気候区分を選ぶと採点できます。ほかは未回答でも採点できます(0点)。'));
-    drawCharts(pd);
+    if (!isMap) drawCharts(pd);
   }
   function renderReview() {
     const body = $('quizBody');
@@ -419,6 +441,8 @@
   }
   function grade() {
     const q = S.quiz, pd = q.pd, code = pd.k.code, a = q.ans, res = {};
+    PTS = PTS_ALL[q.type];
+    if (q.type === 'map') res.elev = a.elev == null ? 0 : a.elev === pd.band ? 1 : Math.abs(a.elev - pd.band) === 1 ? 0.5 : 0;
     res.kop = a.kop === code ? 1 : (code === 'H' && a.kop === pd.k.base) ? 0.5 : (a.kop && a.kop[0] === code[0] && code !== 'H') ? 0.4 : 0;
     res.veg = a.veg == null ? 0 : a.veg === pd.veg ? 1 : a.veg === pd.veg2 ? 0.5 : 0;
     res.land = a.land == null ? 0 : a.land === pd.land ? 1 : Math.abs(a.land - pd.land) === 1 ? 0.5 : 0;
@@ -429,10 +453,10 @@
     const st = S.stats; st.n++; st.sum += q.total; const b = st.by[code] = st.by[code] || { n: 0, ok: 0 }; b.n++; b.ok += res.kop === 1 ? 1 : 0;
     store.set(STATS_KEY, st);
     const count = Review.add({
-      t: Date.now(), code, base: pd.k.base, lat: pd.lat, lon: pd.lon, elev: Math.round(pd.elev), tMax: +pd.k.tMax.toFixed(1), tMin: +pd.k.tMin.toFixed(1), R: Math.round(pd.k.R), rt: pd.k.rainType,
-      loc: $('showLoc').checked, a: { kop: a.kop, veg: a.veg, land: a.land, crops: a.crops.slice() }, r: res, total: q.total,
-      ok: { veg: [pd.veg, pd.veg2].filter(Boolean), land: [pd.land], crops: ct.full.concat(ct.part) },
-      c: { veg: G.VEG[pd.veg].name, land: G.LAND[pd.land], crops: ct.full.map(cropName).join('・') }
+      t: Date.now(), type: q.type, code, base: pd.k.base, lat: pd.lat, lon: pd.lon, elev: Math.round(pd.elev), tMax: +pd.k.tMax.toFixed(1), tMin: +pd.k.tMin.toFixed(1), R: Math.round(pd.k.R), rt: pd.k.rainType,
+      loc: q.type === 'map' || $('showLoc').checked, a: { elev: a.elev, kop: a.kop, veg: a.veg, land: a.land, crops: a.crops.slice() }, r: res, total: q.total,
+      ok: { elev: [pd.band], veg: [pd.veg, pd.veg2].filter(Boolean), land: [pd.land], crops: ct.full.concat(ct.part) },
+      c: { elev: G.ELEV[pd.band], veg: G.VEG[pd.veg].name, land: G.LAND[pd.land], crops: ct.full.map(cropName).join('・') }
     });
     q.milestone = count % Review.BLOCK === 0 ? count / Review.BLOCK : 0;
     S.layer = 'koppen'; buildLayerChips(); refresh(); renderQuiz();
@@ -440,6 +464,7 @@
   }
   function renderResult() {
     const q = S.quiz, pd = q.pd, code = pd.k.code, Kp = G.KOPPEN[code], a = q.ans, r = q.res, body = $('quizBody');
+    PTS = PTS_ALL[q.type];
     const mark = v => v >= 1 ? '<span class="mark ok">○</span>' : v > 0 ? '<span class="mark part">△</span>' : '<span class="mark ng">×</span>';
     const line = (title, key, yours, correct) => `<div class="result">${mark(r[key])}<span><b>${title}</b>: ${yours || '未回答'}</span><span class="rp">${Math.round(PTS[key] * r[key])}/${PTS[key]}</span><span class="ans">正解: <b>${correct}</b></span></div>`;
     const stats = G.KOPPEN_ORDER.filter(k => S.stats.by[k]).map(k => { const b = S.stats.by[k], pct = Math.round(b.ok / b.n * 100); return `<span class="${b.n >= 2 && pct < 50 ? 'weak' : ''}">${k} ${b.ok}/${b.n}</span>`; }).join('');
@@ -447,6 +472,7 @@
     body.innerHTML = `<div class="block">${ms}
       <div class="total"><span class="pts">${q.total}</span><span class="max">/ 100点</span><span class="hint">${q.total >= 85 ? 'よく読めています。' : q.total >= 60 ? 'あと一歩。解説で根拠を確かめましょう。' : '判定の手順を1つずつ追ってみましょう。'}</span></div>
       <div class="verdict"><span class="code">${code}</span><span class="kname">${Kp.name}</span></div>
+      ${q.type === 'map' ? line('標高', 'elev', a.elev != null ? G.ELEV[a.elev] : '', `${G.ELEV[pd.band]} — 平均 ${Math.round(pd.elev / 10) * 10} m`) : ''}
       ${line('気候区分', 'kop', a.kop ? `${a.kop} ${G.KOPPEN[a.kop].name}` : '', `${code} ${Kp.name}`)}
       ${line('植生', 'veg', a.veg != null ? G.VEG[a.veg].name : '', vegText(pd))}
       ${line('耕地の広がり', 'land', a.land != null ? G.LAND[a.land] : '', `${G.LAND[pd.land]} — 収穫面積の合計 ${pc1(pd.cropAll)}`)}
@@ -471,6 +497,7 @@
   $('agriSel').onchange = e => { S.agri = e.target.value; refresh(); };
   for (const id of ['ovCurrent', 'ovWind', 'ovGrid']) $(id).onchange = () => { draw(); legend(); };
   $('reviewBtn').onclick = () => { S.review = S.review ? null : 'now'; renderQuiz(); };
+  for (const b of document.querySelectorAll('#qtypeChips .chip')) b.onclick = () => { if (S.qtype === b.dataset.t) return; S.qtype = b.dataset.t; store.set('geo-quiz-type', S.qtype); S.review = null; newQuestion(); };
   $('showLoc').onchange = () => { if (S.quiz && !S.quiz.done) renderQuiz(); draw(); };
   cv.addEventListener('pointerleave', () => { $('readout').textContent = '地図にカーソルを合わせると、その地点の情報が出ます。'; });
   // テーマや画面幅が変わったらグラフを描き直す
