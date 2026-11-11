@@ -150,5 +150,16 @@ details.model ul { padding-left: 1.2em; margin: 8px 0; display: flex; flex-direc
 .stats { font-family: var(--font-data); font-size: 0.78rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 4px 10px; }
 .stats span { white-space: nowrap; }
 .stats .weak { color: var(--bad); }
+.row.opts { justify-content: space-between; }
+.rtable { display: grid; grid-template-columns: minmax(0, auto) minmax(40px, 1fr) auto; gap: 5px 10px; align-items: center; font-size: 0.86rem; }
+.rtable .num { font-family: var(--font-data); font-size: 0.8rem; white-space: nowrap; }
+.rbar { display: block; height: 8px; background: var(--sunken); border-radius: 2px; overflow: hidden; }
+.rbar i { display: block; height: 100%; background: var(--good); }
+.rbar i.mid { background: var(--part); } .rbar i.bad { background: var(--bad); }
+.rlist { padding-left: 1.2em; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem; }
+.up { color: var(--good); } .down { color: var(--bad); }
+table.rlog td.ng { color: var(--bad); font-weight: 500; }
+table.rlog td, table.rlog th { text-align: center; }
+.milestone { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .foot { color: var(--ink-2); font-size: 0.78rem; border-top: 1px solid var(--line); padding-top: 8px; }
 @media (prefers-reduced-motion: no-preference) { .chip, .btn, .step { transition: background-color 0.12s, border-color 0.12s; } }

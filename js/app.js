@@ -14,7 +14,7 @@
   const S = {
     world: null, sim: null, mode: 'terrain', layer: 'terrain', month: -1,
     tool: 'land', brush: 3, activePlate: 0, undo: [],
-    inspect: -1, quiz: null, stats: store.get('geo-quiz-stats') || { n: 0, sum: 0, by: {} }
+    inspect: -1, quiz: null, review: null, stats: store.get('geo-quiz-stats') || { n: 0, sum: 0, by: {} }
   };
   const cv = $('map'), ctx = cv.getContext('2d');
   const SC = 3, BW = W * SC, BH = H * SC; // 下絵は1セル3px、表示はその2倍
@@ -480,7 +480,10 @@
   }
   function renderQuiz() {
     renderScore();
-    const q = S.quiz, body = $('quizBody'); if (!q) return;
+    const q = S.quiz, body = $('quizBody');
+    $('reviewBtn').textContent = S.review ? 'クイズに戻る' : '記録・分析';
+    if (S.review) return renderReview();
+    if (!q) return;
     if (q.done) return renderResult();
     const pd = q.pd, showLoc = $('showLoc').checked;
     body.innerHTML = '';
@@ -502,6 +505,19 @@
     if (!q.ans.kop) body.appendChild(el('p', { class: 'hint' }, '気候区分を選ぶと採点できます。ほかは未回答でも採点できます(0点)。'));
     drawCharts(pd);
   }
+  function renderReview() {
+    const body = $('quizBody');
+    Review.render(body, S.review, v => { S.review = v; renderReview(); });
+    const row = el('div', { class: 'row' });
+    const back = el('button', { type: 'button', class: 'btn primary', id: 'reviewBack' }, S.quiz && S.quiz.done ? '次の問題へ' : 'クイズに戻る');
+    back.onclick = () => { S.review = null; if (S.quiz && S.quiz.done) newQuestion(); else renderQuiz(); $('panelQuiz').scrollIntoView({ block: 'start', behavior: 'auto' }); };
+    const del = el('button', { type: 'button', class: 'btn ghost', id: 'reviewReset' }, '記録を消す');
+    del.onclick = () => {
+      if (del.dataset.armed) { Review.reset(); S.stats = { n: 0, sum: 0, by: {} }; store.set('geo-quiz-stats', S.stats); renderScore(); renderReview(); }
+      else { del.dataset.armed = '1'; del.textContent = '本当に消す(元に戻せません)'; }
+    };
+    row.append(back, del); body.appendChild(row);
+  }
   function judge(sel, full, part) { return sel == null ? 0 : full.includes(sel) ? 1 : part.includes(sel) ? 0.5 : 0; }
   function grade() {
     const q = S.quiz, pd = q.pd, code = pd.k.code, M = G.MATCH[code], a = q.ans, res = {};
@@ -515,6 +531,12 @@
     q.res = res; q.total = Math.round(total); q.vegFull = vegFull; q.vegPart = vegPart; q.done = true;
     const st = S.stats; st.n++; st.sum += q.total; const b = st.by[code] = st.by[code] || { n: 0, ok: 0 }; b.n++; b.ok += res.kop === 1 ? 1 : 0;
     store.set('geo-quiz-stats', st);
+    const count = Review.add({
+      t: Date.now(), code, base: pd.k.base, lat: pd.lat, elev: Math.round(pd.elev), tMax: +pd.k.tMax.toFixed(1), tMin: +pd.k.tMin.toFixed(1), R: Math.round(pd.k.R), rt: pd.k.rainType,
+      loc: $('showLoc').checked, a: { kop: a.kop, veg: a.veg, soil: a.soil, agri: a.agri.slice(), crops: a.crops.slice() }, r: res, total: q.total,
+      ok: { veg: vegFull.concat(vegPart), soil: M.soil[0].concat(M.soil[1]), agri: M.agri[0].concat(M.agri[1]), crops: M.crops[0].concat(M.crops[1]) }
+    });
+    q.milestone = count % Review.BLOCK === 0 ? count / Review.BLOCK : 0;
     S.layer = 'koppen'; buildLayerChips(); refresh(); renderQuiz();
     $('panelQuiz').scrollIntoView({ block: 'start', behavior: 'auto' });
   }
@@ -524,7 +546,8 @@
     const line = (title, key, yours, correct) => `<div class="result">${mark(r[key])}<span><b>${title}</b>: ${yours || '未回答'}</span><span class="rp">${Math.round(PTS[key] * r[key])}/${PTS[key]}</span><span class="ans">正解: <b>${correct}</b></span></div>`;
     const names = (arr, dict) => arr.map(k => typeof dict[k] === 'string' ? dict[k] : dict[k].name).join('、');
     const stats = G.KOPPEN_ORDER.filter(k => S.stats.by[k]).map(k => { const b = S.stats.by[k], pct = Math.round(b.ok / b.n * 100); return `<span class="${b.n >= 2 && pct < 50 ? 'weak' : ''}">${k} ${b.ok}/${b.n}</span>`; }).join('');
-    body.innerHTML = `<div class="block">
+    const ms = q.milestone ? `<div class="milestone"><b>${q.milestone * Review.BLOCK}問に到達。</b>第${q.milestone}回の傾向分析ができました。<div class="row"><button type="button" class="btn primary" id="openMilestone">傾向分析を見る</button></div></div>` : '';
+    body.innerHTML = `<div class="block">${ms}
       <div class="total"><span class="pts">${q.total}</span><span class="max">/ 100点</span><span class="hint">${q.total >= 85 ? 'よく読めています。' : q.total >= 60 ? 'あと一歩。解説で根拠を確かめましょう。' : '判定の手順を1つずつ追ってみましょう。'}</span></div>
       <div class="verdict"><span class="code">${code}</span><span class="kname">${K.name}</span></div>
       ${line('気候区分', 'kop', a.kop ? `${a.kop} ${G.KOPPEN[a.kop].name}` : '', `${code} ${K.name}`)}
@@ -538,6 +561,7 @@
       <h3>くらしと産業</h3>${answerNotes(code)}
       <div class="row"><button type="button" class="btn primary" id="nextQuiz">次の問題</button></div>
       <h3>気候区分ごとの正答数</h3><div class="stats">${stats}</div></div>`;
+    if (q.milestone) $('openMilestone').onclick = () => { S.review = String(q.milestone); renderQuiz(); $('panelQuiz').scrollIntoView({ block: 'start', behavior: 'auto' }); };
     $('nextQuiz').onclick = () => { newQuestion(); $('panelQuiz').scrollIntoView({ block: 'start', behavior: 'auto' }); };
     drawCharts(pd);
   }
@@ -564,6 +588,7 @@
   for (const b of document.querySelectorAll('.step')) b.onclick = () => setMode(b.dataset.mode);
   $('month').onchange = e => { S.month = +e.target.value; refresh(); };
   for (const id of ['ovCurrent', 'ovWind', 'ovGrid']) $(id).onchange = () => { draw(); legend(); };
+  $('reviewBtn').onclick = () => { S.review = S.review ? null : 'now'; renderQuiz(); };
   $('showLoc').onchange = () => { if (S.quiz && !S.quiz.done) renderQuiz(); draw(); };
   cv.addEventListener('pointerleave', () => { if (!painting) $('readout').textContent = S.mode === 'terrain' ? 'ドラッグで地形を描けます。' : '地図にカーソルを合わせると、その地点の情報が出ます。'; });
   // テーマが変わったらグラフを描き直す
