@@ -58,7 +58,8 @@
       for (let i = 0; i < N; i++) { t[i] = E.T[m * N + i] / 10; p[i] = E.P[m * N + i]; u[i] = E.wu[m * N + i] / 10; v[i] = E.wv[m * N + i] / 10; } // ℃, mm, m/s
       D.T.push(t); D.P.push(p); D.wu.push(u); D.wv.push(v);
     }
-    E.cropNames.forEach((_, k) => { const f = new Float32Array(N); for (let i = 0; i < N; i++) { const v = E.crop[k * N + i] / 255; f[i] = v * v; D.cropAll[i] += f[i]; } D.crop.push(f); }); // セル面積に対する収穫面積の割合
+    E.cropNames.forEach((_, k) => { const f = new Float32Array(N); for (let i = 0; i < N; i++) { const v = E.crop[k * N + i] / 255; f[i] = v * v; } D.crop.push(f); });
+    for (let i = 0; i < N; i++) { const v = E.cropAll[i] / 180; D.cropAll[i] = v * v; } // 収穫面積の合計(オリーブは「その他」に含まれるので二重に数えない) // セル面積に対する収穫面積の割合
     E.stockNames.forEach((_, k) => { const f = new Float32Array(N); for (let i = 0; i < N; i++) { const v = E.stock[k * N + i] / 8; f[i] = v * v; } D.stock.push(f); }); // 頭/km²
     for (let i = 0; i < N; i++) {
       const lat = latOf((i / W) | 0), t = [], p = [];

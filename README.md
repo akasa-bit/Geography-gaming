@@ -20,7 +20,7 @@
 | プレート | Bird (2003) PB2002 |
 | 大地形 | Hasterok et al. (2022) Global geologic provinces |
 | 植生 | ウィスコンシン大学 SAGE Global Potential Vegetation(Ramankutty & Foley 1999) |
-| 作物 | GAEZ+ 2015 収穫面積(Frolking et al. 2020、FAO/IIASA GAEZ v4 にもとづく) |
+| 作物 | MapSPAM 2020 V2r2 収穫面積(IFPRI、46作物を36区分に集約)。オリーブと飼料作物は GAEZ+ 2015 |
 | 家畜 | FAO Gridded Livestock of the World 2015 |
 | 農業形態 | FAO/ILRI Global livestock production systems v5(放牧中心/天水の耕作+家畜/灌漑の耕作+家畜/森林など/不適地) |
 

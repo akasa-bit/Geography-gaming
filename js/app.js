@@ -49,14 +49,14 @@
   const LFC = [hex(LF[0][1]), hex(LF[1][1]), hex(LF[2][1])];
   const BASIC = ['terrain', 'landform', 'plates', 'blank'];
   const mapQuizOpen = () => S.mode === 'quiz' && S.quiz && !S.quiz.done && S.quiz.type === 'map'; // 白地図クイズの出題中
-  const agriField = () => { const d = S.sim, k = d.cropNames.indexOf(S.agri), j = d.stockNames.indexOf(S.agri); return k >= 0 ? [d.crop[k], false] : j >= 0 ? [d.stock[j], true] : [d.cropAll, false]; };
+  const agriField = () => { const d = S.sim, k = d.cropNames.indexOf(S.agri), j = d.stockNames.indexOf(S.agri); return k >= 0 ? [d.crop[k], false, 4] : j >= 0 ? [d.stock[j], true, 1] : [d.cropAll, false, 1]; }; // 作物1種は割合が小さいので色を4倍に強調
 
   /* ---------- 地図の描画 ---------- */
   let bounds = null;
   function renderBase() {
     const w = S.world, e = w.elev, sim = S.sim, layer = S.layer, d = img.data, m = S.month;
     const fieldT = m < 0 ? sim.tAnn : sim.T[m], fieldP = m < 0 ? sim.pAnn : sim.P[m];
-    const [fieldA, isDens] = agriField();
+    const [fieldA, isDens, gain] = agriField();
     const pc = w.plates.map(p => hex(p.color));
     const landPx = new Uint8Array(BW * BH);
     for (let Y = 0; Y < BH; Y++) {
@@ -85,7 +85,7 @@
           c = (m < 0 ? cPann : cPmon)(bil(fieldP)); if (!land) c = [c[0] * 0.55 + 100, c[1] * 0.55 + 108, c[2] * 0.55 + 116];
         } else if (!land) c = [214, 232, 240];
         else if (layer === 'agri' && S.agri === 'lps') { const v = sim.agri[near] || sim.agri[i00] || sim.agri[i10] || sim.agri[i01] || sim.agri[i11]; c = v ? ACOL[v] : [205, 208, 212]; c = [c[0] * flat, c[1] * flat, c[2] * flat]; }
-        else if (layer === 'agri') { c = (isDens ? cDens : cFrac)(bil(fieldA)); c = [c[0] * flat, c[1] * flat, c[2] * flat]; }
+        else if (layer === 'agri') { c = (isDens ? cDens : cFrac)(bil(fieldA) * gain); c = [c[0] * flat, c[1] * flat, c[2] * flat]; }
         else if (layer === 'koppen') {
           const k = sim.kop[near] || sim.kop[i00] || sim.kop[i10] || sim.kop[i01] || sim.kop[i11];
           c = k ? KCOL[k] : [200, 200, 200]; c = [c[0] * flat, c[1] * flat, c[2] * flat];
@@ -198,7 +198,7 @@
     else if (lay === 'koppen') h = G.KOPPEN_ORDER.map(k => sw(G.KOPPEN[k].color, k)).join('');
     else if (lay === 'veg') h = G.VEG_ORDER.map(k => sw(G.VEG[k].color, G.VEG[k].name)).join('') + sw('#cdd0d4', 'データなし');
     else if (lay === 'agri' && S.agri === 'lps') h = G.AGRI_ORDER.map(k => sw(G.AGRI[k].color, G.AGRI[k].name)).join('') + sw('#cdd0d4', 'データなし');
-    else if (lay === 'agri') h = agriField()[1] ? rampH(R_DENS, '頭/km²', v => v) : rampH(R_FRAC, '%(土地に占める収穫面積)', v => Math.round(v * 100));
+    else if (lay === 'agri') h = agriField()[1] ? rampH(R_DENS, '頭/km²', v => v) : rampH(R_FRAC, '%(土地に占める収穫面積)', v => Math.round(v * 100 / agriField()[2]));
     if ($('ovCurrent').checked) h += `<span class="item"><span class="ln" style="border-color:#d9281e"></span>暖流</span><span class="item"><span class="ln" style="border-color:#1846c9"></span>寒流</span>`;
     if ($('ovWind').checked) h += `<span class="item">風: ${(S.month < 0 ? 7 : S.month + 1)}月の平均</span>`;
     $('legend').innerHTML = h;

@@ -39,12 +39,13 @@
   };
   const VEG_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
-  // 作物: GAEZ+ 2015 の区分(収穫面積)。キーはデータのファイル名
+  // 作物: MapSPAM 2020 の収穫面積(オリーブと飼料作物だけ GAEZ+ 2015)。キーは tools/build_earth_data.py の作物名
   const CROPS = {
     Wheat: '小麦', Rice: '米', Maize: 'トウモロコシ', Barley: '大麦', Othercereals: 'その他の麦類・穀物(ライ麦・エン麦など)', Millet: 'ミレット(雑穀)', Sorghum: 'ソルガム(コウリャン)',
-    PotatoAndSweetpotato: 'ジャガイモ・サツマイモ', Cassava: 'キャッサバ', Yamsandotherroots: 'ヤムイモ・タロイモ', Sugarcane: 'サトウキビ', Sugarbeet: 'テンサイ', Soybean: '大豆', Pulses: '豆類',
-    Rapeseed: 'ナタネ', Sunflower: 'ヒマワリ', Groundnut: 'ラッカセイ', Oilpalmfruit: '油ヤシ', Olives: 'オリーブ', Cotton: '綿花', Banana: 'バナナ', Stimulants: 'コーヒー・茶・カカオ',
-    Tobacco: 'タバコ', Vegetables: '野菜', Foddercrops: '飼料作物(牧草など)', CropsNES: 'その他の作物(果樹・ゴムなど)'
+    Potato: 'ジャガイモ', Sweetpotato: 'サツマイモ', Cassava: 'キャッサバ', Yams: 'ヤムイモ・タロイモ', Sugarcane: 'サトウキビ', Sugarbeet: 'テンサイ', Soybean: '大豆', Pulses: '豆類',
+    Rapeseed: 'ナタネ', Sunflower: 'ヒマワリ', Groundnut: 'ラッカセイ', Sesame: 'ゴマ', Oilpalm: '油ヤシ', Coconut: 'ココヤシ', Olives: 'オリーブ', Cotton: '綿花', Otherfibre: 'その他の繊維(ジュート・麻など)',
+    Coffee: 'コーヒー', Cocoa: 'カカオ', Tea: '茶', Rubber: '天然ゴム', Tobacco: 'タバコ', Banana: 'バナナ', Citrus: '柑橘類', Tropicalfruit: '熱帯の果樹(マンゴー・パイナップルなど)',
+    Temperatefruit: '温帯の果樹(ブドウ・リンゴなど)', Vegetables: '野菜', Fodder: '飼料作物(牧草など)', Othercrops: 'その他の作物'
   };
   // 家畜: FAO Gridded Livestock of the World 2015
   const STOCK = { cattle: '牛', sheep: '羊', goats: 'ヤギ', pigs: '豚' };

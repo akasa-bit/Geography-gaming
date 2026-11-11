@@ -5,7 +5,7 @@
 必要なファイル(入手先は data/SOURCES.md):
   etopo2022.txt  udel_air.nc  udel_precip.nc  oisst.nc  air2m.nc  gpcp.nc
   uwnd.nc  vwnd.nc  ucur.txt  vcur.txt  pb_plates.txt  pb_poles.txt
-  potveg.asc.gz  lps/glps_gleam_61113_10km.tif  gaez/<作物>.tif  cattle.tif sheep.tif goats.tif pigs.tif  gprv.shp/.dbf/.shx
+  potveg.asc.gz  lps/glps_gleam_61113_10km.tif  spam/spam.zip  gaez/Olives.tif gaez/Foddercrops.tif  cattle.tif sheep.tif goats.tif pigs.tif  gprv.shp/.dbf/.shx
 """
 import base64, gzip, json, math, os, re, sys
 import numpy as np
@@ -222,21 +222,40 @@ for y in range(H):
         if c[o[1]] >= 0.25 * len(v): veg2[y, x] = o[1]   # 2番目に広い区分(25%以上を占める場合)
 print('植生データのある陸セル', int(((veg > 0) & land).sum()), '/', int(land.sum()), '区分別', np.bincount(veg[land].ravel(), minlength=16).tolist())
 
-# ---------- 作物: GAEZ+ 2015 収穫面積 (Frolking et al. 2020; FAO/IIASA GAEZ v4 に基づく), 5分格子・1000ha ----------
+# ---------- 作物: MapSPAM 2020 V2r2 収穫面積 (IFPRI 2024), 5分格子・ha。オリーブと飼料作物だけ GAEZ+ 2015 (1000ha) ----------
 lat_edge = np.radians(90 - np.arange(H + 1))
 cell_km2 = (6371.0 ** 2) * np.radians(1.0) * (np.sin(lat_edge[:-1]) - np.sin(lat_edge[1:]))   # 1°セルの面積
-CROPS = ['Wheat', 'Rice', 'Maize', 'Barley', 'Othercereals', 'Millet', 'Sorghum', 'PotatoAndSweetpotato', 'Cassava', 'Yamsandotherroots', 'Sugarcane', 'Sugarbeet', 'Soybean', 'Pulses',
-         'Rapeseed', 'Sunflower', 'Groundnut', 'Oilpalmfruit', 'Olives', 'Cotton', 'Banana', 'Stimulants', 'Tobacco', 'Vegetables', 'Foddercrops', 'CropsNES']
+def agg5(a):
+    a = a.astype(float); assert a.shape == (2160, 4320)
+    a[~np.isfinite(a)] = 0; a[a < 0] = 0
+    return a.reshape(H, 12, W, 12).sum(axis=(1, 3))
 def tif5(path):
     with rasterio.open(path) as d:
-        a = d.read(1).astype(float); assert a.shape == (2160, 4320) and abs(d.bounds.top - 90) < 1e-6 and abs(d.bounds.left + 180) < 1e-6
-        nd = d.nodata
-    a[~np.isfinite(a)] = 0; a[a < 0] = 0
-    if nd is not None: a[a == nd] = 0
-    return a.reshape(H, 12, W, 12).sum(axis=(1, 3))
+        assert abs(d.bounds.top - 90) < 1e-3 and abs(d.bounds.left + 180) < 1e-3
+        return agg5(d.read(1))
+# アプリでの作物名 → MapSPAM の作物コード(複数は合計)
+SPAM = {'Wheat': ['WHEA'], 'Rice': ['RICE'], 'Maize': ['MAIZ'], 'Barley': ['BARL'], 'Othercereals': ['OCER'], 'Millet': ['MILL', 'PMIL'], 'Sorghum': ['SORG'],
+        'Potato': ['POTA'], 'Sweetpotato': ['SWPO'], 'Cassava': ['CASS'], 'Yams': ['YAMS', 'ORTS'], 'Sugarcane': ['SUGC'], 'Sugarbeet': ['SUGB'], 'Soybean': ['SOYB'],
+        'Pulses': ['BEAN', 'CHIC', 'COWP', 'PIGE', 'LENT', 'OPUL'], 'Rapeseed': ['RAPE'], 'Sunflower': ['SUNF'], 'Groundnut': ['GROU'], 'Sesame': ['SESA'], 'Oilpalm': ['OILP'], 'Coconut': ['CNUT'],
+        'Cotton': ['COTT'], 'Otherfibre': ['OFIB'], 'Coffee': ['COFF', 'RCOF'], 'Cocoa': ['COCO'], 'Tea': ['TEAS'], 'Rubber': ['RUBB'], 'Tobacco': ['TOBA'], 'Banana': ['BANA', 'PLNT'],
+        'Citrus': ['CITR'], 'Tropicalfruit': ['TROF'], 'Temperatefruit': ['TEMF'], 'Vegetables': ['TOMA', 'ONIO', 'VEGE'], 'Othercrops': ['OOIL', 'REST']}
+GAEZ = {'Olives': 'Olives', 'Fodder': 'Foddercrops'}   # MapSPAM にない区分
+CROPS = list(SPAM) + list(GAEZ)
+import zipfile
+from rasterio.io import MemoryFile
+zf = zipfile.ZipFile(R + 'spam/spam.zip'); znames = zf.namelist()
 crop_frac = np.zeros((len(CROPS), H, W))
 for k, c in enumerate(CROPS):
-    crop_frac[k] = tif5(R + 'gaez/' + c + '.tif') * 10.0 / cell_km2[:, None]   # 1000ha=10km² → セル面積に対する割合
+    if c in SPAM:
+        for code in SPAM[c]:
+            n = [x for x in znames if x.endswith('_H_' + code + '_A.tif')]; assert len(n) == 1, code
+            with MemoryFile(zf.read(n[0])) as mf, mf.open() as d:
+                assert abs(d.bounds.top - 90) < 1e-3 and abs(d.bounds.left + 180) < 1e-3
+                crop_frac[k] += agg5(d.read(1)) / 100.0 / cell_km2[:, None]      # ha → km² → セル面積に対する割合
+    else:
+        crop_frac[k] = tif5(R + 'gaez/' + GAEZ[c] + '.tif') * 10.0 / cell_km2[:, None]   # 1000ha=10km²
+# 合計にはオリーブを入れない(MapSPAM の「その他」に含まれるため二重に数えない)
+crop_all = crop_frac[[k for k, c in enumerate(CROPS) if c != 'Olives']].sum(axis=0)
 print('作物の世界合計(100万ha):', {c: round(float((crop_frac[k] * cell_km2[:, None]).sum() / 1e4), 1) for k, c in enumerate(CROPS)})
 
 # ---------- 家畜: FAO Gridded Livestock of the World 2015 (GLW 4, Gilbert et al. 2018), 5分格子・頭数 ----------
@@ -296,6 +315,7 @@ fields = [
     ('sstA', 'i1', np.clip(np.round(sst_anom * 10), -127, 127)),     # 0.1 ℃
     ('veg', 'u1', veg), ('veg2', 'u1', veg2), ('oro', 'u1', oro), ('lps', 'u1', lps), ('lps2', 'u1', lps2),
     ('crop', 'u1', np.clip(np.round(np.sqrt(crop_frac) * 255), 0, 255)),      # 割合 = (値/255)², [作物][y][x]
+    ('cropAll', 'u1', np.clip(np.round(np.sqrt(crop_all) * 180), 0, 255)),    # 収穫面積の合計の割合 = (値/180)²
     ('stock', 'u1', np.clip(np.round(np.sqrt(stock) * 8), 0, 255)),           # 頭/km² = (値/8)², [家畜][y][x]
 ]
 NP = {'i1': 'i1', 'u1': 'u1', 'i2': '<i2', 'u2': '<u2'}

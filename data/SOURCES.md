@@ -15,7 +15,8 @@
 | プレート境界・相対運動 | PB2002 (Bird 2003, G-cubed, doi:10.1029/2001GC000252) | UCLA | — | `http://peterbird.name/oldFTP/PB2002/PB2002_plates.dig.txt`, `PB2002_poles.dat.txt` |
 | 大地形(造山帯・安定陸塊) | Global geologic provinces (Hasterok et al. 2022, Earth-Science Reviews, doi:10.1016/j.earscirev.2022.104069) | アデレード大学 | — | `https://raw.githubusercontent.com/dhasterok/global_tectonics/main/plates%26provinces/shp/global_gprv.{shp,dbf,shx}` (`gprv.*`) |
 | 植生(潜在自然植生) | Global Potential Vegetation Dataset, 5分 (Ramankutty & Foley 1999, Global Biogeochem. Cycles) | ウィスコンシン大学 SAGE | — | `https://sage-public-files.s3.amazonaws.com/global-potential-vegetation/glpotveg_5min.asc.gz` (`potveg.asc.gz`) |
-| 作物の収穫面積(26区分) | GAEZ+ 2015 Crop Harvest Area (Frolking et al. 2020, doi:10.7910/DVN/KAGRFI, CC0)。FAO/IIASA GAEZ v4 にもとづく | ニューハンプシャー大学 / Harvard Dataverse | 2015年ごろ | Harvard Dataverse の `GAEZAct2015_HarvArea_<作物>_Total.tif` (`gaez/<作物>.tif`) |
+| 作物の収穫面積 | MapSPAM 2020 V2r2, Global Spatially-Disaggregated Crop Production Statistics Data for 2020 (IFPRI, doi:10.7910/DVN/SWPENT)。46作物 | 国際食糧政策研究所 IFPRI / Harvard Dataverse | 2020年ごろ | Dataverse の `spam2020V2r2_global_harvested_area.geotiff.zip`(ダウンロード時に利用者フォームあり)を `spam/spam.zip` として置く |
+| オリーブ・飼料作物の収穫面積 | GAEZ+ 2015 Crop Harvest Area (Frolking et al. 2020, doi:10.7910/DVN/KAGRFI, CC0)。FAO/IIASA GAEZ v4 にもとづく | ニューハンプシャー大学 / Harvard Dataverse | 2015年ごろ | `GAEZAct2015_HarvArea_{Olives,Foddercrops}_Total.tif` (`gaez/Olives.tif` `gaez/Foddercrops.tif`) |
 | 農業形態 | Global distribution of ruminant livestock production systems V5 (Robinson et al. 2011; FAO/ILRI, doi:10.7910/DVN/WPDSZE, CC0) | FAO / ILRI / Harvard Dataverse | 2010年ごろ | `2_GlobalRuminantLPS_GIS.7z` を展開 (`lps/glps_gleam_61113_10km.tif`) |
 | 家畜(牛・羊・ヤギ・豚) | Gridded Livestock of the World 2015, GLW 4 (Gilbert et al. 2018, Scientific Data)。doi:10.7910/DVN/LHBICE, VZOYHM, YYG6ET, CIVCPB | FAO / ブリュッセル自由大学 / Harvard Dataverse | 2015年 | 各データセットの `5_*_2015_Da.tif` (`cattle.tif` `sheep.tif` `goats.tif` `pigs.tif`) |
 
@@ -27,7 +28,7 @@
 - **プレート**: PB2002 の52プレートを高校地理で扱う主要14プレートにまとめた(例: ソマリア→アフリカ、アムール・スンダ・揚子江→ユーラシア、オホーツク→北アメリカ、インド+オーストラリア→インド・オーストラリア)。速度はPB2002のオイラー極(太平洋プレート基準)に、太平洋プレートの絶対運動(NNR-NUVEL-1A, Argus & Gordon 1991: 63.0°S, 107.3°E, 0.641°/100万年)を足して求めた。
 - **ケッペンの気候区分**: 上の気温・降水量を教科書の判定法(乾燥限界 r=20(t+x))にあてはめた結果(既存の気候区分図を読み込んだものではない)。標高2000m以上は高山気候(H)。
 - **植生**: 5分格子144点のうち最も多い区分をそのセルの植生、25%以上を占める2番目の区分を「一部」とした。データのある点が1/4未満のセル(南極など)は「データなし」。
-- **作物**: 5分格子の収穫面積(1000ha)を1°セルで合計し、セル面積に対する割合にした。二期作などは重複して数えるので、合計が100%を超えるセルがある。コーヒー・茶・カカオは元データで1区分(Stimulants)、果樹・ゴムなどは「その他の作物」にまとめられている。
+- **作物**: MapSPAM の5分格子の収穫面積(ha、灌漑+天水の合計)を1°セルで合計し、セル面積に対する割合にした。二期作などは重複して数えるので、合計が100%を超えるセルがある。46作物を36区分にまとめた(コーヒー=アラビカ+ロブスタ、ミレット=2種、豆類=6種、バナナ=バナナ+料理用バナナ、野菜=トマト+タマネギ+その他、ヤムイモ=ヤム+その他の根菜、その他の作物=その他の油料+残り)。MapSPAM にないオリーブと飼料作物は GAEZ+ 2015 から加えた(年次が5年ほど違う)。オリーブは MapSPAM の「その他の油料」と重なるので、合計には入れていない。ブドウ・ナツメヤシは「温帯の果樹」「熱帯の果樹」、ジュートは「その他の繊維」に含まれる。
 - **農業形態**: 元データの15区分を、放牧中心(LGY/LGA/LGH/LGT)・天水の耕作+家畜(MRY/MRA/MRH/MRT)・灌漑の耕作+家畜(MIY/MIA/MIH/MIT)・森林など(Other)・不適地 の5つにまとめた(都市は数えない)。5分格子144点で最も多い型をそのセルの農業形態、25%以上を占める2番目を「一部」とした。ホイットルセーの農業地域区分(遊牧・混合農業・地中海式農業など)のデジタルデータは公開されているものが見つからなかったため、これを使っている。
 - **家畜**: 5分格子の頭数を1°セルで合計し、セル面積で割った密度(頭/km²)。
 - **大地形**: 元データの「最後の造山運動(lastorogen)」を次のように対応させた。新期造山帯 = Cordilleran, Alpine-Himalayan, Antilles。古期造山帯 = Caledonian, Variscan-Hercynian, Uralian, Tasmanides, Kazakh, Mongol, Indo-Sinian, Scotian。それ以外の大陸地殻 = 安定陸塊。加えて、PB2002 の狭まる境界から1°以内の陸地は新期造山帯とした。この対応づけは本アプリ独自のもの。
